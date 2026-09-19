@@ -1,0 +1,20 @@
+{
+  "name": "pane-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --force",
+    "build": "tsc -b && vite build && node scripts/copy-legal-files.mjs",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "utif": "^3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}
