@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pane-viewer",
+  "compatibility_date": "2026-09-18",
+
+  // Worker のスクリプトは持たず、`npm run build` の成果物だけを配信する構成。
+  // SPA のため、未知のパスは index.html を返してクライアント側で処理させる。
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // 公開URLは pane-viewer.eeenoooo.com のみ。
+  // workers_dev を false にしておかないと、デプロイのたびに
+  // pane-viewer.eeenoooo.workers.dev が再び有効化される。
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "pane-viewer.eeenoooo.com",
+      "custom_domain": true
+    }
+  ]
+}
