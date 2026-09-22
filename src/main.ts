@@ -63,6 +63,7 @@ app.innerHTML = `
             <span class="scale-unit" aria-hidden="true">%</span>
           </label>
           <button id="sync" type="button" aria-pressed="true"></button>
+          <button id="align" type="button" title="${t('alignTitle')}" data-i18n="align" data-i18n-attr="title:alignTitle">${t('align')}</button>
         </div>
         <div class="tool-group pdf-tools">
           <label for="pdf-resolution"><span data-i18n="pdfResolution">${t('pdfResolution')}</span>
@@ -94,7 +95,8 @@ app.innerHTML = `
           <label><input id="divider" type="checkbox" checked /> <span data-i18n="divider">${t('divider')}</span></label>
           <select id="background" aria-label="${t('background')}" data-i18n-attr="aria-label:background"><option value="dark" data-i18n="dark">${t('dark')}</option><option value="light" data-i18n="light">${t('light')}</option><option value="transparent" data-i18n="transparent">${t('transparent')}</option></select>
           <button id="save" type="button" title="${t('saveTitle')}" data-i18n="save" data-i18n-attr="title:saveTitle">${t('save')}</button>
-          <button id="copy" type="button" title="${t('copyTitle')}" data-i18n="copy" data-i18n-attr="title:copyTitle">${t('copy')}</button>
+          <!-- ボタンは出さないが、Ctrl/⌘+Shift+C でのコピーは使えるようにしておく。 -->
+          <button id="copy" type="button" title="${t('copyTitle')}" data-i18n="copy" data-i18n-attr="title:copyTitle" hidden>${t('copy')}</button>
           <button id="record" type="button" title="${t('recordTitle')}" aria-pressed="false">${t('record')}</button>
         </div>
       </div>
@@ -275,6 +277,7 @@ function render() {
     pendingRestore.delete(id);
     applyRestored(id, state);
   }
+  document.querySelector<HTMLButtonElement>('#align')!.disabled = visible.length < 2;
   const record = document.querySelector<HTMLButtonElement>('#record')!;
   record.disabled = !recordingFormat || (!hasImage && !recorder.recording);
   renderRecordButton();
@@ -290,16 +293,25 @@ function renderRecordButton() {
   button.setAttribute('aria-pressed', String(recording));
 }
 
+// Fit は見失ったときの復帰手段なので、同期中でも変換を配らず、そのペインを確実に収める。
 function fit(id: PaneId) {
   const pane = paneFor(id);
   if (!pane.asset || pane.element.hidden) return;
   const rect = pane.rect;
   const size = pane.oriented;
-  store.update(id, (view) => {
-    view.scale = Math.min(rect.width / size.width, rect.height / size.height);
-    view.x = (rect.width - size.width * view.scale) / 2;
-    view.y = (rect.height - size.height * view.scale) / 2;
-  });
+  const scale = Math.min(rect.width / size.width, rect.height / size.height);
+  store.set(id, { scale, x: (rect.width - size.width * scale) / 2, y: (rect.height - size.height * scale) / 2 });
+}
+
+function fitVisible() {
+  if (store.sync) for (const pane of visiblePanes()) fit(pane.id);
+  else fit(store.active);
+}
+
+function alignPanes() {
+  if (visiblePanes().length < 2) return;
+  store.alignTo(store.active);
+  toast(t('aligned'));
 }
 
 function actual(id = store.active) {
@@ -454,7 +466,7 @@ function applyRestored(id: PaneId, state: TimelinePaneState) {
     pane.orientation.rotation = state.rotation;
     pane.orientation.flipH = state.flipH;
     pane.orientation.flipV = state.flipV;
-    store.update(id, (view) => { view.scale = state.scale; view.x = state.x; view.y = state.y; });
+    store.set(id, { scale: state.scale, x: state.x, y: state.y });
   };
   // ページ送りは非同期なので、ページが変わってから表示状態を当てる。
   if (state.page) void pane.goToPage(state.page).then(applyView, applyView);
@@ -495,7 +507,8 @@ window.addEventListener('drop', (event) => {
 }, true);
 
 document.querySelector('#record')!.addEventListener('click', () => void toggleRecording());
-document.querySelector('#fit')!.addEventListener('click', () => fit(store.active));
+document.querySelector('#fit')!.addEventListener('click', fitVisible);
+document.querySelector('#align')!.addEventListener('click', alignPanes);
 document.querySelector('#actual')!.addEventListener('click', () => actual());
 document.querySelector('#reset')!.addEventListener('click', resetOrientation);
 scaleInput.addEventListener('change', () => {
@@ -561,11 +574,11 @@ window.addEventListener('keydown', (event) => {
     if (event.shiftKey) void capture(true); else void capture();
     return;
   }
-  if (key === 's') { store.setSync(!store.sync); persistSettings(); }
+  if (key === 's') { if (event.shiftKey) alignPanes(); else { store.setSync(!store.sync); persistSettings(); } }
   else if (key === 'r') rotate(event.shiftKey ? -90 : 90);
   else if (key === 'h') flip('flipH');
   else if (key === 'v') flip('flipV');
-  else if (key === '0') fit(store.active);
+  else if (key === '0') fitVisible();
   else if (key === '1') actual();
   else if (key === '+' || key === '=') { const rect = paneFor(store.active).rect; paneFor(store.active).zoomAt(rect.width / 2, rect.height / 2, 1.1); }
   else if (key === '-') { const rect = paneFor(store.active).rect; paneFor(store.active).zoomAt(rect.width / 2, rect.height / 2, 1 / 1.1); }
