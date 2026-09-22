@@ -104,6 +104,7 @@ app.innerHTML = `
       <span id="status-summary">${t('noImage')}</span>
       <span id="cursor">${t('cursorNone')}</span>
       <span id="warning" role="status"></span>
+      <span class="disclaimer" data-i18n="disclaimer" title="${t('disclaimer')}" data-i18n-attr="title:disclaimer">${t('disclaimer')}</span>
       <details class="license-note">
         <summary data-i18n="licenseInfo">${t('licenseInfo')}</summary>
         <p data-i18n-html="licenseBody">${t('licenseBody')}</p>

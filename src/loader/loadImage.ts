@@ -126,7 +126,15 @@ async function renderPdfPage(pdfDocument: PDFDocumentProxy, pageNumber: number, 
 }
 
 async function loadPdf(file: File, pageNumber = 1, resolution: PdfResolution = 144): Promise<ImageAsset> {
-  const loadingTask = getDocument({ data: await file.arrayBuffer() });
+  // フォントを埋め込んでいないPDFでは、これらを渡さないと本文が描画されない。
+  // CJKには cmaps、標準14フォントには standard_fonts が要る。
+  const base = import.meta.env.BASE_URL;
+  const loadingTask = getDocument({
+    data: await file.arrayBuffer(),
+    cMapUrl: `${base}cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${base}standard_fonts/`,
+  });
   let document: PDFDocumentProxy | undefined;
   try {
     document = await loadingTask.promise;

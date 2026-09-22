@@ -13,6 +13,10 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 - Switch between Japanese and English.
 - Files are processed in the browser and are not uploaded by the application.
 
+> PaneViewer is for visual inspection only. It does not guarantee that files match.
+>
+> このアプリは視覚的に確認を行うもので、ファイル間の一致を保証するものではありません。
+
 ## Development
 
 ```sh

@@ -11,6 +11,24 @@
 
 The Apache License 2.0 text is included below.
 
+## Adobe CMap resources (PDF.js 同梱)
+
+- Path: `cmaps/`
+- Copyright: Copyright 1990-2009 Adobe Systems Incorporated. All rights reserved.
+- License: BSD 3-Clause 相当（全文は `cmaps/LICENSE` を参照）
+- Source: https://github.com/mozilla/pdfjs-dist
+
+CJKのPDFを表示するために配布物へ含めています。
+
+## PDF.js standard fonts (PDF.js 同梱)
+
+- Path: `standard_fonts/`
+- Foxit / PDFium 由来のフォント（`Foxit*.pfb`）: Copyright 2014 PDFium Authors. BSD 3-Clause 相当（全文は `standard_fonts/LICENSE_FOXIT` を参照）
+- Liberation フォント（`LiberationSans-*.ttf`）: Copyright (c) 2012 Red Hat, Inc. / Digitized data copyright (c) 2010 Google Corporation. SIL Open Font License 1.1（全文は `standard_fonts/LICENSE_LIBERATION` を参照）
+- Source: https://github.com/mozilla/pdfjs-dist
+
+フォントを埋め込んでいないPDFの標準14フォントを表示するために配布物へ含めています。
+
 ## UTIF.js
 
 - Package: `utif` 3.1.0
