@@ -1,5 +1,6 @@
 import './style.css';
 import { makeScreenshot, download } from './export/screenshot';
+import { SessionRecorder, supportedFormat } from './export/recorder';
 import { Pane } from './pane';
 import { getSettings, saveSettings, ViewStore } from './state';
 import type { ExportOptions, GridDimension, PaneId, PdfResolution } from './types';
@@ -92,6 +93,7 @@ app.innerHTML = `
           <select id="background" aria-label="${t('background')}" data-i18n-attr="aria-label:background"><option value="dark" data-i18n="dark">${t('dark')}</option><option value="light" data-i18n="light">${t('light')}</option><option value="transparent" data-i18n="transparent">${t('transparent')}</option></select>
           <button id="save" type="button" title="${t('saveTitle')}" data-i18n="save" data-i18n-attr="title:saveTitle">${t('save')}</button>
           <button id="copy" type="button" title="${t('copyTitle')}" data-i18n="copy" data-i18n-attr="title:copyTitle">${t('copy')}</button>
+          <button id="record" type="button" title="${t('recordTitle')}" aria-pressed="false">${t('record')}</button>
         </div>
       </div>
     </header>
@@ -111,6 +113,9 @@ app.innerHTML = `
 const panesElement = document.querySelector<HTMLElement>('#panes')!;
 const scaleInput = document.querySelector<HTMLInputElement>('#scale-input')!;
 let raf = 0;
+const recorder = new SessionRecorder();
+const recordingFormat = supportedFormat();
+let recordTimer = 0;
 const store = new ViewStore(saved, paneIds, schedule);
 const panes = new Map<PaneId, Pane>();
 
@@ -262,6 +267,19 @@ function render() {
   const hasImage = visible.some((pane) => Boolean(pane.asset));
   document.querySelector<HTMLButtonElement>('#save')!.disabled = !hasImage;
   document.querySelector<HTMLButtonElement>('#copy')!.disabled = !hasImage || !('clipboard' in navigator) || !('ClipboardItem' in window);
+  const record = document.querySelector<HTMLButtonElement>('#record')!;
+  record.disabled = !recordingFormat || (!hasImage && !recorder.recording);
+  renderRecordButton();
+}
+
+function renderRecordButton() {
+  const button = document.querySelector<HTMLButtonElement>('#record')!;
+  const recording = recorder.recording;
+  const seconds = Math.floor(recorder.elapsed);
+  button.textContent = recording ? t('stopRecordingWithTime', { time: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` }) : t('record');
+  button.title = recording ? t('stopRecordingTitle') : recordingFormat ? t('recordTitle') : t('recordingUnsupported');
+  button.classList.toggle('recording', recording);
+  button.setAttribute('aria-pressed', String(recording));
 }
 
 function fit(id: PaneId) {
@@ -363,6 +381,41 @@ async function capture(copy = false) {
   }
 }
 
+async function toggleRecording() {
+  const failure = (error: unknown) => toast(t('recordingError', { message: error instanceof Error ? error.message : t('recordingFailed') }));
+  if (recorder.recording) {
+    clearInterval(recordTimer);
+    recordTimer = 0;
+    try {
+      const { blob, format, seconds } = await recorder.stop();
+      download(blob, format.extension);
+      toast(t('recordingSaved', { seconds: seconds.toFixed(1), format: format.extension.toUpperCase() }));
+      if (format.extension === 'webm') setTimeout(() => toast(t('recordingWebmNote')), 2400);
+    } catch (error) {
+      failure(error);
+    }
+    renderRecordButton();
+    schedule();
+    return;
+  }
+  try {
+    recorder.start({
+      panes: visiblePanes,
+      getView: (id) => store.current(id),
+      grid: () => store.grid,
+      container: panesElement,
+      options: () => exportOptions,
+    }, () => { toast(t('recordingLimit')); void toggleRecording(); });
+    recordTimer = window.setInterval(renderRecordButton, 500);
+    toast(t('recordingStarted'));
+  } catch (error) {
+    failure(error);
+  }
+  renderRecordButton();
+  schedule();
+}
+
+document.querySelector('#record')!.addEventListener('click', () => void toggleRecording());
 document.querySelector('#fit')!.addEventListener('click', () => fit(store.active));
 document.querySelector('#actual')!.addEventListener('click', () => actual());
 document.querySelector('#reset')!.addEventListener('click', resetOrientation);
