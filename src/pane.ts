@@ -259,6 +259,15 @@ export class Pane {
       this.message.textContent = t('duplicateError', { message: error instanceof Error ? error.message : t('noImage') }); this.message.hidden = false; this.callbacks.onChange();
     }
   }
+  // 操作ログからの復元用。ページ番号はページ送りの表示と同じ1始まりで受ける。
+  async goToPage(page: number) {
+    const asset = this.asset;
+    if (!asset) return;
+    const pageCount = asset.tiff?.pages.length ?? asset.pdf?.pageCount ?? 0;
+    const current = asset.tiff ? asset.tiff.page + 1 : asset.pdf?.page ?? 0;
+    if (pageCount < 2 || page === current) return;
+    await this.changePage(page - 1);
+  }
   private async changePage(page: number) {
     const asset = this.asset;
     const pageCount = asset?.tiff?.pages.length ?? asset?.pdf?.pageCount ?? 0;

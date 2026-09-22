@@ -4,13 +4,13 @@ import type { ExportOptions, GridSettings, PaneId, ViewState } from '../types';
 import type { Pane } from '../pane';
 import { t } from '../i18n';
 
-function color(background: ExportOptions['background'], format: ExportOptions['format']) {
-  if (background === 'transparent' && format === 'image/png') return undefined;
+function color(background: ExportOptions['background']) {
+  if (background === 'transparent') return undefined;
   return background === 'light' ? '#f6f7fb' : '#151923';
 }
 
 function drawPane(ctx: CanvasRenderingContext2D, pane: Pane, view: ViewState, x: number, y: number, width: number, height: number, options: ExportOptions, scale: number) {
-  const fill = color(options.background, options.format); if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, width, height); }
+  const fill = color(options.background); if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, width, height); }
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.imageSmoothingEnabled = view.scale < 2;
   ctx.beginPath(); ctx.rect(0, 0, width / scale, height / scale); ctx.clip();
   if (pane.asset) {
@@ -33,7 +33,7 @@ export function renderComposite(ctx: CanvasRenderingContext2D, panes: Pane[], ge
   const { scale, offsetX, offsetY } = placement;
   const width = containerRect.width;
   const height = containerRect.height;
-  const fill = color(options.background, options.format); if (fill) { ctx.fillStyle = fill; ctx.fillRect(offsetX, offsetY, width * scale, height * scale); }
+  const fill = color(options.background); if (fill) { ctx.fillStyle = fill; ctx.fillRect(offsetX, offsetY, width * scale, height * scale); }
   for (const pane of panes) {
     const rect = pane.rect;
     if (rect.width <= 0 || rect.height <= 0) continue;
@@ -62,12 +62,18 @@ export async function makeScreenshot(panes: Pane[], getView: (id: PaneId) => Vie
   const dpr = window.devicePixelRatio || 1;
   const canvas = document.createElement('canvas'); canvas.width = Math.round(containerRect.width * dpr); canvas.height = Math.round(containerRect.height * dpr);
   const ctx = canvas.getContext('2d')!;
-  const fill = color(options.background, options.format); if (fill) { ctx.fillStyle = fill; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  const fill = color(options.background); if (fill) { ctx.fillStyle = fill; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   renderComposite(ctx, panes, getView, grid, container, options, { scale: dpr, offsetX: 0, offsetY: 0 });
-  return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(t('screenshotError'))), options.format, options.format === 'image/jpeg' ? 0.92 : undefined));
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(t('screenshotError'))), 'image/png'));
 }
 
-export function download(blob: Blob, extension: 'png' | 'jpg' | 'mp4' | 'webm') {
-  const date = new Date(); const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
-  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `compare_${stamp}.${extension}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+export function timestamp(date = new Date()) {
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
+}
+
+// 動画と操作ログを同じ名前で並べるため、呼び出し側が時刻を渡せるようにしている。
+export function download(blob: Blob, extension: 'png' | 'mp4' | 'webm' | 'json', stamp = timestamp()) {
+  const name = `compare_${stamp}.${extension}`;
+  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return name;
 }

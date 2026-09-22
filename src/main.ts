@@ -1,6 +1,7 @@
 import './style.css';
-import { makeScreenshot, download } from './export/screenshot';
+import { makeScreenshot, download, timestamp } from './export/screenshot';
 import { SessionRecorder, supportedFormat } from './export/recorder';
+import { foldTimeline, parseTimeline, type Timeline, type TimelinePaneState } from './export/timeline';
 import { Pane } from './pane';
 import { getSettings, saveSettings, ViewStore } from './state';
 import type { ExportOptions, GridDimension, PaneId, PdfResolution } from './types';
@@ -15,9 +16,11 @@ const saved = getSettings();
 let pdfResolution: PdfResolution = saved.pdfResolution;
 let exportOptions: ExportOptions = (() => {
   try {
-    return { format: 'image/png', labels: true, divider: true, background: 'dark', ...JSON.parse(localStorage.getItem('image-viewer.export.v1') ?? '{}') };
+    // 旧バージョンの format キーが残っていても拾わないよう、既知のキーだけを読み直す。
+    const stored = JSON.parse(localStorage.getItem('image-viewer.export.v1') ?? '{}') as Partial<ExportOptions>;
+    return { labels: stored.labels !== false, divider: stored.divider !== false, background: stored.background === 'light' || stored.background === 'transparent' ? stored.background : 'dark' };
   } catch {
-    return { format: 'image/png', labels: true, divider: true, background: 'dark' };
+    return { labels: true, divider: true, background: 'dark' };
   }
 })();
 const targetOptions = paneIds.map((id, index) => `<option value="${id}">${paneLabel(index)}</option>`).join('');
@@ -87,7 +90,6 @@ app.innerHTML = `
           <button id="flip-v" type="button" title="${t('flipVTitle')}" data-i18n-attr="title:flipVTitle">⇅</button>
         </div>
         <div class="tool-group export-tools">
-          <select id="export-format" aria-label="${t('exportFormat')}" data-i18n-attr="aria-label:exportFormat"><option value="image/png">PNG</option><option value="image/jpeg">JPEG</option></select>
           <label><input id="labels" type="checkbox" checked /> <span data-i18n="labels">${t('labels')}</span></label>
           <label><input id="divider" type="checkbox" checked /> <span data-i18n="divider">${t('divider')}</span></label>
           <select id="background" aria-label="${t('background')}" data-i18n-attr="aria-label:background"><option value="dark" data-i18n="dark">${t('dark')}</option><option value="light" data-i18n="light">${t('light')}</option><option value="transparent" data-i18n="transparent">${t('transparent')}</option></select>
@@ -267,6 +269,11 @@ function render() {
   const hasImage = visible.some((pane) => Boolean(pane.asset));
   document.querySelector<HTMLButtonElement>('#save')!.disabled = !hasImage;
   document.querySelector<HTMLButtonElement>('#copy')!.disabled = !hasImage || !('clipboard' in navigator) || !('ClipboardItem' in window);
+  for (const [id, state] of pendingRestore) {
+    if (paneFor(id).asset?.name !== state.file) continue;
+    pendingRestore.delete(id);
+    applyRestored(id, state);
+  }
   const record = document.querySelector<HTMLButtonElement>('#record')!;
   record.disabled = !recordingFormat || (!hasImage && !recorder.recording);
   renderRecordButton();
@@ -355,11 +362,23 @@ function changeGrid(rows: GridDimension, columns: GridDimension) {
   });
 }
 
-function toast(message: string) {
+let toastTimer = 0;
+
+function toast(message: string, action?: { label: string; run: () => void }) {
   const element = document.querySelector<HTMLElement>('#toast')!;
   element.textContent = message;
+  element.classList.toggle('actionable', Boolean(action));
+  if (action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => { element.classList.remove('visible'); action.run(); });
+    element.append(button);
+  }
   element.classList.add('visible');
-  setTimeout(() => element.classList.remove('visible'), 2200);
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => element.classList.remove('visible'), action ? 9000 : 2200);
 }
 
 function saveExportOptions() {
@@ -368,12 +387,12 @@ function saveExportOptions() {
 
 async function capture(copy = false) {
   try {
-    const blob = await makeScreenshot(visiblePanes(), (id) => store.current(id), store.grid, panesElement, copy ? { ...exportOptions, format: 'image/png' } : exportOptions);
+    const blob = await makeScreenshot(visiblePanes(), (id) => store.current(id), store.grid, panesElement, exportOptions);
     if (copy) {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
       toast(t('copySuccess'));
     } else {
-      download(blob, exportOptions.format === 'image/png' ? 'png' : 'jpg');
+      download(blob, 'png');
       toast(t('saved'));
     }
   } catch (error) {
@@ -387,9 +406,19 @@ async function toggleRecording() {
     clearInterval(recordTimer);
     recordTimer = 0;
     try {
-      const { blob, format, seconds } = await recorder.stop();
-      download(blob, format.extension);
-      toast(t('recordingSaved', { seconds: seconds.toFixed(1), format: format.extension.toUpperCase() }));
+      const { blob, format, seconds, timeline } = await recorder.stop();
+      // 動画が主、操作ログは従。ログ側で失敗しても動画の保存は済ませておく。
+      const stamp = timestamp();
+      const video = download(blob, format.extension, stamp);
+      // 2つ目の自動ダウンロードはブラウザに黙って捨てられることがあるため、
+      // 手動で取り直せるボタンをトーストに残す。
+      const saveLog = () => download(new Blob([JSON.stringify({ ...timeline, video }, null, 2)], { type: 'application/json' }), 'json', stamp);
+      try {
+        saveLog();
+        toast(t('recordingSaved', { seconds: seconds.toFixed(1), format: format.extension.toUpperCase() }), { label: t('saveLogAgain'), run: saveLog });
+      } catch {
+        toast(t('recordingLogFailed'), { label: t('saveLogAgain'), run: saveLog });
+      }
       if (format.extension === 'webm') setTimeout(() => toast(t('recordingWebmNote')), 2400);
     } catch (error) {
       failure(error);
@@ -403,6 +432,7 @@ async function toggleRecording() {
       panes: visiblePanes,
       getView: (id) => store.current(id),
       grid: () => store.grid,
+      sync: () => store.sync,
       container: panesElement,
       options: () => exportOptions,
     }, () => { toast(t('recordingLimit')); void toggleRecording(); });
@@ -414,6 +444,54 @@ async function toggleRecording() {
   renderRecordButton();
   schedule();
 }
+
+const pendingRestore = new Map<PaneId, TimelinePaneState>();
+
+function applyRestored(id: PaneId, state: TimelinePaneState) {
+  const pane = paneFor(id);
+  const applyView = () => {
+    pane.orientation.rotation = state.rotation;
+    pane.orientation.flipH = state.flipH;
+    pane.orientation.flipV = state.flipV;
+    store.update(id, (view) => { view.scale = state.scale; view.x = state.x; view.y = state.y; });
+  };
+  // ページ送りは非同期なので、ページが変わってから表示状態を当てる。
+  if (state.page) void pane.goToPage(state.page).then(applyView, applyView);
+  else applyView();
+}
+
+function restoreTimeline(timeline: Timeline) {
+  const restored = foldTimeline(timeline);
+  const dimension = (value: number): GridDimension => (value === 1 || value === 2 || value === 3 ? value : 1);
+  store.setGrid(dimension(restored.grid.rows), dimension(restored.grid.columns));
+  store.setSync(restored.sync);
+  persistSettings();
+  pendingRestore.clear();
+  const waiting: string[] = [];
+  for (const [id, state] of restored.panes) {
+    if (!paneIds.includes(id) || !state.file) continue;
+    // ファイル本体は復元できないので、同名のファイルが読み込まれた時点で表示状態を当てる。
+    if (paneFor(id).asset?.name === state.file) applyRestored(id, state);
+    else { pendingRestore.set(id, state); waiting.push(state.file); }
+  }
+  schedule();
+  toast(waiting.length ? t('restoredWaiting', { files: waiting.join(', ') }) : t('restored'));
+}
+
+window.addEventListener('dragover', (event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); });
+window.addEventListener('drop', (event) => {
+  const file = event.dataTransfer?.files[0];
+  if (!file) return;
+  // ペイン外に落とされたファイルをブラウザが開いてしまわないよう、まず既定動作を止める。
+  event.preventDefault();
+  // 画像やPDFはこれまで通りペイン側で処理させる。
+  if (!file.name.toLowerCase().endsWith('.json')) return;
+  event.stopPropagation();
+  void file.text().then((text) => {
+    const timeline = parseTimeline(text);
+    if (timeline) restoreTimeline(timeline); else toast(t('restoreInvalid'));
+  }).catch(() => toast(t('restoreInvalid')));
+}, true);
 
 document.querySelector('#record')!.addEventListener('click', () => void toggleRecording());
 document.querySelector('#fit')!.addEventListener('click', () => fit(store.active));
@@ -458,18 +536,13 @@ document.querySelector('#language')!.addEventListener('change', (event) => {
   applyLanguage();
 });
 
-for (const [selector, field] of [['#export-format', 'format'], ['#labels', 'labels'], ['#divider', 'divider'], ['#background', 'background']] as const) {
+for (const [selector, field] of [['#labels', 'labels'], ['#divider', 'divider'], ['#background', 'background']] as const) {
   const element = document.querySelector<HTMLInputElement | HTMLSelectElement>(selector)!;
   if (element instanceof HTMLInputElement) element.checked = exportOptions[field] as boolean;
   else element.value = exportOptions[field] as string;
   element.addEventListener('change', () => {
     if (field === 'labels' || field === 'divider') exportOptions[field] = (element as HTMLInputElement).checked;
-    else if (field === 'format') exportOptions.format = (element as HTMLSelectElement).value as ExportOptions['format'];
     else exportOptions.background = (element as HTMLSelectElement).value as ExportOptions['background'];
-    if (exportOptions.format === 'image/jpeg' && exportOptions.background === 'transparent') {
-      exportOptions.background = 'dark';
-      document.querySelector<HTMLSelectElement>('#background')!.value = 'dark';
-    }
     applyViewerBackground();
     saveExportOptions();
   });

@@ -9,7 +9,7 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 - Arrange panes in a grid of 1–3 rows and 1–3 columns.
 - Open images, multi-page PDFs, and multi-page TIFFs.
 - Synchronize zooming and panning, or inspect panes independently.
-- Rotate and flip images; export the pane layout as PNG or JPEG.
+- Rotate and flip images; export the pane layout as PNG.
 - Switch between Japanese and English.
 - Files are processed in the browser and are not uploaded by the application.
 

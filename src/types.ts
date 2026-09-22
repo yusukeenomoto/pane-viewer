@@ -25,7 +25,7 @@ export interface ImageAsset {
 export interface DecodedTiffPage { width: number; height: number; rgba: ArrayBuffer; bitsPerSample: number }
 export interface CursorInfo { x: number; y: number; inside: boolean }
 export interface ExportOptions {
-  format: 'image/png' | 'image/jpeg'; labels: boolean; divider: boolean; background: 'dark' | 'light' | 'transparent';
+  labels: boolean; divider: boolean; background: 'dark' | 'light' | 'transparent';
 }
 
 export const DEFAULT_VIEW: ViewState = { scale: 1, x: 0, y: 0 };

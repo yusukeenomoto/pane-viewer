@@ -1,11 +1,14 @@
 import { renderComposite } from './screenshot';
 import type { ExportOptions, GridSettings, PaneId, ViewState } from '../types';
+import type { Timeline, TimelineEvent, TimelinePane, TimelinePaneState } from './timeline';
 import type { Pane } from '../pane';
 import { t } from '../i18n';
 
 const FPS = 30;
 const MAX_SECONDS = 300;
 const MAX_DIMENSION = 1920;
+const SAMPLE_MS = 100;
+const EPSILON = 1e-6;
 
 const CANDIDATES: RecordingFormat[] = [
   { mimeType: 'video/mp4;codecs=avc1.42E01E', extension: 'mp4' },
@@ -21,11 +24,45 @@ export interface RecorderSource {
   panes: () => Pane[];
   getView: (id: PaneId) => ViewState;
   grid: () => GridSettings;
+  sync: () => boolean;
   container: HTMLElement;
   options: () => ExportOptions;
 }
 
-export interface RecordingResult { blob: Blob; format: RecordingFormat; seconds: number }
+export interface RecordingResult { blob: Blob; format: RecordingFormat; seconds: number; timeline: Timeline }
+
+const round = (value: number, digits: number) => { const factor = 10 ** digits; return Math.round(value * factor) / factor; };
+
+function paneRoster(pane: Pane): TimelinePane {
+  const asset = pane.asset;
+  const entry: TimelinePane = { id: pane.id, label: pane.label, file: asset?.name ?? null, width: asset?.width ?? null, height: asset?.height ?? null };
+  if (asset?.pdf) entry.pdf = { page: asset.pdf.page, pageCount: asset.pdf.pageCount, resolution: asset.pdf.resolution };
+  if (asset?.tiff) entry.tiff = { page: asset.tiff.page + 1, pageCount: asset.tiff.pages.length };
+  return entry;
+}
+
+// ドラッグ中は scale/x/y が微量に動き続けるため、書き出す桁に丸めてから差分を取る。
+function paneState(pane: Pane, view: ViewState): TimelinePaneState {
+  const asset = pane.asset;
+  return {
+    file: asset?.name ?? null, scale: round(view.scale, 3), x: round(view.x, 1), y: round(view.y, 1),
+    rotation: pane.orientation.rotation, flipH: pane.orientation.flipH, flipV: pane.orientation.flipV,
+    page: asset?.pdf ? asset.pdf.page : asset?.tiff ? asset.tiff.page + 1 : null,
+  };
+}
+
+function paneDelta(before: TimelinePaneState, after: TimelinePaneState) {
+  const delta: Partial<TimelinePaneState> = {};
+  if (Math.abs(after.scale - before.scale) > EPSILON) delta.scale = after.scale;
+  if (Math.abs(after.x - before.x) > EPSILON) delta.x = after.x;
+  if (Math.abs(after.y - before.y) > EPSILON) delta.y = after.y;
+  if (after.rotation !== before.rotation) delta.rotation = after.rotation;
+  if (after.flipH !== before.flipH) delta.flipH = after.flipH;
+  if (after.flipV !== before.flipV) delta.flipV = after.flipV;
+  if (after.file !== before.file) delta.file = after.file;
+  if (after.page !== before.page) delta.page = after.page;
+  return delta;
+}
 
 // MP4 を優先するのは、WebM が QuickTime や PowerPoint で再生できないため。
 export function supportedFormat(): RecordingFormat | undefined {
@@ -44,6 +81,11 @@ export class SessionRecorder {
   private limit = 0;
   private startedAt = 0;
   private format?: RecordingFormat;
+  private source?: RecorderSource;
+  private sampler = 0;
+  private timeline?: Timeline;
+  private states = new Map<PaneId, TimelinePaneState>();
+  private last?: { grid: GridSettings; sync: boolean };
 
   get recording() { return this.recorder?.state === 'recording'; }
 
@@ -75,11 +117,46 @@ export class SessionRecorder {
     this.format = format;
     this.recorder = recorder;
     this.startedAt = performance.now();
+    this.source = source;
+    this.states = new Map();
+    this.last = undefined;
+    this.timeline = { version: 1, app: 'PaneViewer', recordedAt: new Date().toISOString(), duration: 0, video: '', grid: source.grid(), sync: source.sync(), panes: source.panes().map(paneRoster), events: [] };
     recorder.start(1000);
     this.paint(source);
     const loop = () => { this.frame = requestAnimationFrame(loop); this.paint(source); };
     this.frame = requestAnimationFrame(loop);
     this.limit = window.setTimeout(onLimit, MAX_SECONDS * 1000);
+    // 操作ログは rAF と切り離し、フレームレートが落ちても一定間隔で取る。
+    this.tick();
+    this.sampler = window.setInterval(() => this.tick(), SAMPLE_MS);
+  }
+
+  private tick() {
+    try { this.sample(); } catch { /* 操作ログを取りこぼしても録画は続ける */ }
+  }
+
+  private sample() {
+    const timeline = this.timeline;
+    const source = this.source;
+    if (!timeline || !source) return;
+    const grid = source.grid();
+    const sync = source.sync();
+    const states = new Map(source.panes().map((pane) => [pane.id, paneState(pane, source.getView(pane.id))] as const));
+    const panes: Record<PaneId, Partial<TimelinePaneState>> = {};
+    for (const [id, state] of states) {
+      const before = this.states.get(id);
+      const delta = before ? paneDelta(before, state) : { ...state };
+      if (Object.keys(delta).length > 0) panes[id] = delta;
+    }
+    const last = this.last;
+    const event: TimelineEvent = { t: last ? round(this.elapsed, 2) : 0 };
+    if (Object.keys(panes).length > 0) event.panes = panes;
+    if (!last || grid.rows !== last.grid.rows || grid.columns !== last.grid.columns) event.grid = grid;
+    if (!last || sync !== last.sync) event.sync = sync;
+    this.states = states;
+    this.last = { grid, sync };
+    if (last && !event.panes && !event.grid && event.sync === undefined) return;
+    timeline.events.push(event);
   }
 
   private paint(source: RecorderSource) {
@@ -107,10 +184,15 @@ export class SessionRecorder {
     const format = this.format;
     if (!recorder || !format) throw new Error(t('recordingNotStarted'));
     const seconds = this.elapsed;
+    this.tick();
     cancelAnimationFrame(this.frame);
     clearTimeout(this.limit);
+    clearInterval(this.sampler);
     this.frame = 0;
     this.limit = 0;
+    this.sampler = 0;
+    const timeline = this.timeline!;
+    timeline.duration = round(seconds, 2);
     const blob = await new Promise<Blob>((resolve, reject) => {
       recorder.onstop = () => resolve(new Blob(this.chunks, { type: format.mimeType }));
       recorder.onerror = () => reject(new Error(t('recordingError', { message: t('recordingFailed') })));
@@ -122,7 +204,11 @@ export class SessionRecorder {
     this.canvas = undefined;
     this.ctx = undefined;
     this.chunks = [];
+    this.source = undefined;
+    this.timeline = undefined;
+    this.states = new Map();
+    this.last = undefined;
     if (blob.size === 0) throw new Error(t('recordingEmpty'));
-    return { blob, format, seconds };
+    return { blob, format, seconds, timeline };
   }
 }
