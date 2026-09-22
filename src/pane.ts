@@ -16,6 +16,21 @@ export interface PaneCallbacks {
   getPdfResolution(): PdfResolution;
 }
 
+// macOS ではトラックパッドの2本指スクロールもマウスホイールも同じ wheel イベントで届く。
+// ピンチは ctrlKey で確実に分かるが、残りは delta の性質から推測するしかない。
+// 横成分がある、刻みが小数、刻みが細かい、のいずれかならトラックパッド。
+// 1回の操作の途中で判定が揺れないよう、直近の判定を少しの間引き継ぐ。
+let trackpadUntil = 0;
+
+function isTrackpadScroll(event: WheelEvent) {
+  if (event.deltaMode !== 0) return false;
+  if (event.deltaX !== 0 || !Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 40) {
+    trackpadUntil = event.timeStamp + 500;
+    return true;
+  }
+  return event.timeStamp < trackpadUntil;
+}
+
 export class Pane {
   readonly element: HTMLElement;
   label: string;
@@ -284,8 +299,13 @@ export class Pane {
   }
   private point(event: PointerEvent | WheelEvent) { const r = this.rect; return { x: event.clientX - r.left, y: event.clientY - r.top }; }
   private onWheel(event: WheelEvent) {
-    if (!this.asset) return; event.preventDefault(); const p = this.point(event); const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    this.zoomAt(p.x, p.y, factor); this.callbacks.onActive(this.id);
+    if (!this.asset) return; event.preventDefault();
+    if (!event.ctrlKey && !event.altKey && isTrackpadScroll(event)) {
+      this.pan(-event.deltaX, -event.deltaY);
+    } else {
+      const p = this.point(event); this.zoomAt(p.x, p.y, event.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }
+    this.callbacks.onActive(this.id);
   }
   zoomAt(x: number, y: number, factor: number) {
     if (!this.asset) return;
