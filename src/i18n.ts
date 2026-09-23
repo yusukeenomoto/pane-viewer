@@ -5,7 +5,7 @@ const messages: Record<Language, Record<string, string>> = {
   ja: {
     appTitle: 'PaneViewer', toolbarAria: '画像ビューア操作', fit: 'Fit', fitTitle: '全体表示 (0)', actual: '100%', actualTitle: '100%表示 (1)', resetOrientation: '向きリセット',
     gridSettings: 'グリッド設定', rows: '行数', columns: '列数', scale: '倍率', syncOn: '⛓ 同期 ON', syncOff: '⛓̸ 同期 OFF', align: '揃える', alignTitle: '全ペインをアクティブなペインの表示位置に揃える (Shift+S)', aligned: '表示位置を揃えました', syncTitleOn: '同期: ON (S)', syncTitleOff: '同期: OFF (S)',
-    pdfResolution: 'PDF解像度', target: '対象', allPanes: '全ペイン', rotateLeftTitle: '左90°回転 (Shift+R)', rotateRightTitle: '右90°回転 (R)', flipHTitle: '左右反転 (H)', flipVTitle: '上下反転 (V)',
+    pdfResolution: 'PDF解像度', target: '対象', followSync: '同期に従う', allPanes: '全ペイン', rotateLeftTitle: '左90°回転 (Shift+R)', rotateRightTitle: '右90°回転 (R)', flipHTitle: '左右反転 (H)', flipVTitle: '上下反転 (V)',
     labels: 'ラベル', divider: '区切り', background: '背景色', dark: '暗背景', light: '明背景', transparent: '透明', save: '📷 保存', saveTitle: 'スクリーンショットを保存 (Ctrl/⌘+S)', copy: '📋 コピー', copyTitle: 'PNGをコピー (Ctrl/⌘+Shift+C)',
     record: '⏺ 録画', recordTitle: 'ズームやページ送りの操作を、動画と操作ログとして保存（最長5分）', stopRecordingWithTime: '⏹ 停止 {time}', stopRecordingTitle: '録画を終了して動画と操作ログを保存',
     recordingStarted: '録画を開始しました', recordingSaved: '動画と操作ログを保存しました（{seconds}秒 / {format}）', recordingLogFailed: '操作ログを保存できませんでした（動画は保存済み）', recordingLimit: '最長5分に達したため録画を終了しました', recordingWebmNote: 'WebM形式です。QuickTimeやPowerPointでは再生できない場合があります',
@@ -22,7 +22,7 @@ const messages: Record<Language, Record<string, string>> = {
   en: {
     appTitle: 'PaneViewer', toolbarAria: 'Image viewer controls', fit: 'Fit', fitTitle: 'Fit to view (0)', actual: '100%', actualTitle: 'Actual size (1)', resetOrientation: 'Reset orientation',
     gridSettings: 'Grid settings', rows: 'Rows', columns: 'Columns', scale: 'Scale', syncOn: '⛓ Sync ON', syncOff: '⛓̸ Sync OFF', align: 'Align', alignTitle: 'Align all panes to the active pane (Shift+S)', aligned: 'Panes aligned', syncTitleOn: 'Sync: ON (S)', syncTitleOff: 'Sync: OFF (S)',
-    pdfResolution: 'PDF resolution', target: 'Target', allPanes: 'All panes', rotateLeftTitle: 'Rotate left 90° (Shift+R)', rotateRightTitle: 'Rotate right 90° (R)', flipHTitle: 'Flip horizontal (H)', flipVTitle: 'Flip vertical (V)',
+    pdfResolution: 'PDF resolution', target: 'Target', followSync: 'Follow sync', allPanes: 'All panes', rotateLeftTitle: 'Rotate left 90° (Shift+R)', rotateRightTitle: 'Rotate right 90° (R)', flipHTitle: 'Flip horizontal (H)', flipVTitle: 'Flip vertical (V)',
     labels: 'Labels', divider: 'Divider', background: 'Background', dark: 'Dark', light: 'Light', transparent: 'Transparent', save: '📷 Save', saveTitle: 'Save screenshot (Ctrl/⌘+S)', copy: '📋 Copy', copyTitle: 'Copy PNG (Ctrl/⌘+Shift+C)',
     record: '⏺ Record', recordTitle: 'Record zooming and page turns as a video plus an operation log (up to 5 minutes)', stopRecordingWithTime: '⏹ Stop {time}', stopRecordingTitle: 'Finish recording and save the video and log',
     recordingStarted: 'Recording started', recordingSaved: 'Saved video + operation log ({seconds}s / {format})', recordingLogFailed: 'Could not save the operation log (the video was saved)', recordingLimit: 'Recording stopped at the 5 minute limit', recordingWebmNote: 'Saved as WebM, which QuickTime and PowerPoint may not play',

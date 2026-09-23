@@ -2,6 +2,7 @@ import './style.css';
 import { makeScreenshot, download, timestamp } from './export/screenshot';
 import { SessionRecorder, supportedFormat } from './export/recorder';
 import { foldTimeline, parseTimeline, type Timeline, type TimelinePaneState } from './export/timeline';
+import { ALL_PANES, FOLLOW_SYNC, orientationTargetIds } from './utils/targets';
 import { Pane } from './pane';
 import { getSettings, saveSettings, ViewStore } from './state';
 import type { ExportOptions, GridDimension, PaneId, PdfResolution } from './types';
@@ -82,7 +83,8 @@ app.innerHTML = `
         <div class="tool-group orientation-tools">
           <label><span data-i18n="target">${t('target')}</span>
             <select id="orientation-target" aria-label="${t('target')}" data-i18n-attr="aria-label:target">
-              <option value="all" data-i18n="allPanes">${t('allPanes')}</option>${targetOptions}
+              <option value="${FOLLOW_SYNC}" data-i18n="followSync">${t('followSync')}</option>
+              <option value="${ALL_PANES}" data-i18n="allPanes">${t('allPanes')}</option>${targetOptions}
             </select>
           </label>
           <button id="rotate-left" type="button" title="${t('rotateLeftTitle')}" data-i18n-attr="title:rotateLeftTitle">↶</button>
@@ -176,8 +178,8 @@ function applyLanguage() {
 
   const target = document.querySelector<HTMLSelectElement>('#orientation-target')!;
   const selectedTarget = target.value;
-  target.innerHTML = `<option value="all">${t('allPanes')}</option>${paneIds.map((id, index) => `<option value="${id}">${paneLabel(index)}</option>`).join('')}`;
-  target.value = selectedTarget === 'all' || paneIds.includes(selectedTarget) ? selectedTarget : 'all';
+  target.innerHTML = `<option value="${FOLLOW_SYNC}">${t('followSync')}</option><option value="${ALL_PANES}">${t('allPanes')}</option>${paneIds.map((id, index) => `<option value="${id}">${paneLabel(index)}</option>`).join('')}`;
+  target.value = selectedTarget === FOLLOW_SYNC || selectedTarget === ALL_PANES || paneIds.includes(selectedTarget) ? selectedTarget : FOLLOW_SYNC;
   document.querySelector<HTMLSelectElement>('#language')!.value = language;
   paneIds.forEach((id, index) => paneFor(id).setLanguage(paneLabel(index)));
   applyViewerBackground();
@@ -240,7 +242,7 @@ function render() {
   for (const id of paneIds) {
     const pane = paneFor(id);
     pane.element.hidden = !visibleIds.has(id);
-    pane.render(store.current(id), store.sync);
+    pane.render(store.current(id), store.sync, id === store.active);
   }
 
   const active = store.current(store.active);
@@ -260,8 +262,9 @@ function render() {
   panesElement.style.gridTemplateColumns = `repeat(${store.columns}, minmax(0, 1fr))`;
 
   const target = document.querySelector<HTMLSelectElement>('#orientation-target')!;
-  for (const option of target.options) option.disabled = option.value !== 'all' && !visibleIds.has(option.value);
-  if (target.value !== 'all' && !visibleIds.has(target.value)) target.value = 'all';
+  const fixedTargets: string[] = [FOLLOW_SYNC, ALL_PANES];
+  for (const option of target.options) option.disabled = !fixedTargets.includes(option.value) && !visibleIds.has(option.value);
+  if (!fixedTargets.includes(target.value) && !visibleIds.has(target.value)) target.value = FOLLOW_SYNC;
 
   const visible = visiblePanes();
   const summary = visible.map((pane) => `${pane.label}: ${pane.asset ? pane.asset.name : t('noImage')}`).join(' / ');
@@ -341,9 +344,8 @@ function preserveCenter(action: () => void) {
 
 function orientationTargets() {
   const value = document.querySelector<HTMLSelectElement>('#orientation-target')!.value;
-  if (value === 'all') return visiblePanes();
-  const pane = panes.get(value);
-  return pane && !pane.element.hidden ? [pane] : [];
+  const visible = visiblePanes().map((pane) => pane.id);
+  return orientationTargetIds(value, store.sync, store.active, visible).map(paneFor);
 }
 
 function rotate(delta: number) {
