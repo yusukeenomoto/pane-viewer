@@ -1,5 +1,6 @@
 import { cloneImageAsset, createPdfPageAsset, loadImage, selectPdfPage, selectTiffPage } from './loader/loadImage';
 import { orientedSize, orientedToOriginal, originalToOriented, transformCss } from './utils/orientation';
+import { isTrackpadScroll } from './utils/wheel';
 import type { CursorInfo, ImageAsset, OrientationState, PaneId, PdfResolution, ViewState } from './types';
 import { DEFAULT_ORIENTATION } from './types';
 import { t } from './i18n';
@@ -14,21 +15,6 @@ export interface PaneCallbacks {
   onDuplicate(id: PaneId): void;
   onSwap(source: PaneId, target: PaneId): void;
   getPdfResolution(): PdfResolution;
-}
-
-// macOS ではトラックパッドの2本指スクロールもマウスホイールも同じ wheel イベントで届く。
-// ピンチは ctrlKey で確実に分かるが、残りは delta の性質から推測するしかない。
-// 横成分がある、刻みが小数、刻みが細かい、のいずれかならトラックパッド。
-// 1回の操作の途中で判定が揺れないよう、直近の判定を少しの間引き継ぐ。
-let trackpadUntil = 0;
-
-function isTrackpadScroll(event: WheelEvent) {
-  if (event.deltaMode !== 0) return false;
-  if (event.deltaX !== 0 || !Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 40) {
-    trackpadUntil = event.timeStamp + 500;
-    return true;
-  }
-  return event.timeStamp < trackpadUntil;
 }
 
 export class Pane {
@@ -125,7 +111,8 @@ export class Pane {
     if (!this.asset) this.message.innerHTML = t('emptyMessage');
     this.renderPages();
   }
-  render(view: ViewState, sync: boolean) {
+  render(view: ViewState, sync: boolean, active = false) {
+    this.element.classList.toggle('active', active);
     const independent = this.element.querySelector<HTMLElement>('.independent')!;
     independent.textContent = t('independent'); independent.hidden = sync;
     this.element.querySelector<HTMLButtonElement>('.duplicate')!.hidden = !this.asset;
