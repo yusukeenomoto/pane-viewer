@@ -2,7 +2,24 @@
   "name": "pane-viewer",
   "private": true,
   "version": "0.1.0",
+  "description": "Arrange images, PDFs and TIFFs in multiple panes and compare them with synchronized zooming and panning, entirely in the browser.",
   "license": "MIT",
+  "homepage": "https://pane-viewer.eeenoooo.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yusukeenomoto/pane-viewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yusukeenomoto/pane-viewer/issues"
+  },
+  "keywords": [
+    "image-viewer",
+    "image-comparison",
+    "pdf",
+    "tiff",
+    "proofreading",
+    "browser"
+  ],
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-pdfjs-assets.mjs",

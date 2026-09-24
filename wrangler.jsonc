@@ -1,3 +1,5 @@
+// このファイルは作者自身の Cloudflare Workers 向け設定。
+// フォークして使う場合は name と routes を自分のものに変えること。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pane-viewer",
