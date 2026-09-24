@@ -22,6 +22,7 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 - Drop that JSON back onto the window to restore the grid, zoom, position, orientation and page of a past session.
 - Switch between Japanese and English.
 - Files are processed in the browser and are not uploaded by the application. There is no backend, no account, and no telemetry.
+- Display settings are kept in `localStorage` (three keys, prefixed `image-viewer.`). The contents and names of the files you open are never stored.
 
 ## Usage
 

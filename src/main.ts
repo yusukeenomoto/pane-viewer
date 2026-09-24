@@ -111,6 +111,7 @@ app.innerHTML = `
       <span class="disclaimer" data-i18n="disclaimer" title="${t('disclaimer')}" data-i18n-attr="title:disclaimer">${t('disclaimer')}</span>
       <details class="license-note">
         <summary data-i18n="licenseInfo">${t('licenseInfo')}</summary>
+        <p data-i18n="storageBody">${t('storageBody')}</p>
         <p data-i18n-html="licenseBody">${t('licenseBody')}</p>
       </details>
     </footer>
