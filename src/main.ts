@@ -3,6 +3,7 @@ import { makeScreenshot, download, timestamp } from './export/screenshot';
 import { SessionRecorder, supportedFormat } from './export/recorder';
 import { foldTimeline, parseTimeline, type Timeline, type TimelinePaneState } from './export/timeline';
 import { ALL_PANES, FOLLOW_SYNC, orientationTargetIds } from './utils/targets';
+import { clickZoomFactor } from './utils/zoomClick';
 import { Pane } from './pane';
 import { getSettings, saveSettings, ViewStore } from './state';
 import type { ExportOptions, GridDimension, PaneId, PdfResolution } from './types';
@@ -11,6 +12,8 @@ import { getLanguage, setLanguage, t, type Language } from './i18n';
 const MAX_PANES = 9;
 const paneIds: PaneId[] = Array.from({ length: MAX_PANES }, (_, index) => `pane-${index}`);
 const paneLabel = (index: number) => t('imageLabel', { n: index + 1 });
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+let spaceHeld = false;
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const saved = getSettings();
@@ -152,6 +155,7 @@ function callbacks(id: PaneId) {
     onDuplicate: duplicatePane,
     onSwap: swapPanes,
     getPdfResolution: () => pdfResolution,
+    getClickZoom: (event: MouseEvent) => clickZoomFactor(event, spaceHeld, isMac),
   };
 }
 
@@ -569,6 +573,8 @@ document.querySelector('#save')!.addEventListener('click', () => void capture())
 document.querySelector('#copy')!.addEventListener('click', () => void capture(true));
 window.addEventListener('resize', schedule);
 window.addEventListener('keydown', (event) => {
+  // ツールバーのボタンにフォーカスが残っていても、最初のクリックから拡大縮小できるよう Space の状態は常に追う。
+  if (event.code === 'Space') spaceHeld = true;
   const target = event.target as HTMLElement;
   if (target.closest('input,select,button')) return;
   const key = event.key.toLowerCase();
@@ -593,5 +599,11 @@ window.addEventListener('keydown', (event) => {
   } else return;
   event.preventDefault();
 });
+window.addEventListener('keyup', (event) => {
+  // macOS では ⌘ を押している間に離したキーの keyup が届かないため、⌘ を離した時点で Space も離れたとみなす。
+  if (event.code === 'Space' || event.key === 'Meta') spaceHeld = false;
+});
+// Spotlight などに奪われて keyup を受け取れなかったときに押しっぱなし扱いが残らないようにする。
+window.addEventListener('blur', () => { spaceHeld = false; });
 
 applyLanguage();

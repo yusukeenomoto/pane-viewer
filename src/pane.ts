@@ -15,6 +15,7 @@ export interface PaneCallbacks {
   onDuplicate(id: PaneId): void;
   onSwap(source: PaneId, target: PaneId): void;
   getPdfResolution(): PdfResolution;
+  getClickZoom(event: MouseEvent): number | undefined;
 }
 
 export class Pane {
@@ -88,7 +89,8 @@ export class Pane {
     this.pages.addEventListener('pointerup', (event) => event.stopPropagation());
     this.pages.addEventListener('click', (event) => event.stopPropagation());
     this.stage.addEventListener('wheel', (event) => this.onWheel(event), { passive: false });
-    this.stage.addEventListener('dblclick', () => this.callbacks.onFit(this.id));
+    // 拡大縮小のクリックを素早く続けてもダブルクリック扱いで Fit に戻さない。
+    this.stage.addEventListener('dblclick', (event) => { if (!this.callbacks.getClickZoom(event)) this.callbacks.onFit(this.id); });
     this.stage.addEventListener('pointerdown', (event) => this.pointerDown(event));
     this.stage.addEventListener('pointermove', (event) => this.pointerMove(event));
     this.stage.addEventListener('pointerup', (event) => this.pointerEnd(event));
@@ -300,6 +302,8 @@ export class Pane {
   }
   pan(dx: number, dy: number) { this.callbacks.updateView(this.id, (view) => { view.x += dx; view.y += dy; }); }
   private pointerDown(event: PointerEvent) {
+    const zoom = event.button === 0 ? this.callbacks.getClickZoom(event) : undefined;
+    if (zoom) { const p = this.point(event); this.zoomAt(p.x, p.y, zoom); this.callbacks.onActive(this.id); return; }
     this.stage.setPointerCapture(event.pointerId); this.pointers.set(event.pointerId, this.point(event)); this.callbacks.onActive(this.id);
     if (this.pointers.size === 1) { const p = this.point(event); const v = this.callbacks.getView(this.id); this.drag = { x: p.x, y: p.y, viewX: v.x, viewY: v.y }; }
     if (this.pointers.size === 2) this.startPinch();

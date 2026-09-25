@@ -37,6 +37,8 @@ Drop a file onto a pane, or click an empty pane to pick one.
 | Double click | Fit the pane |
 | `0` / `1` | Fit / actual size |
 | `+` / `-` | Zoom in / out |
+| `Ctrl`(`⌘`)`+Space`+click | Zoom in 2× at the pointer |
+| `Ctrl`(`⌘`)`+Alt`(`⌥`)`+Space`+click | Zoom out 2× at the pointer |
 | Arrow keys | Pan |
 | `R` / `Shift+R` | Rotate right / left |
 | `H` / `V` | Flip horizontally / vertically |
