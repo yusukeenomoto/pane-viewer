@@ -572,9 +572,16 @@ for (const [selector, field] of [['#labels', 'labels'], ['#divider', 'divider'],
 document.querySelector('#save')!.addEventListener('click', () => void capture());
 document.querySelector('#copy')!.addEventListener('click', () => void capture(true));
 window.addEventListener('resize', schedule);
+// クリックで拡大縮小できる間は、ペイン上のポインターを +/- 付きの虫眼鏡にする。
+function updateClickZoomCursor(event?: KeyboardEvent) {
+  const factor = event && clickZoomFactor(event, spaceHeld, isMac);
+  if (factor) panesElement.dataset.clickZoom = factor > 1 ? 'in' : 'out';
+  else delete panesElement.dataset.clickZoom;
+}
 window.addEventListener('keydown', (event) => {
   // ツールバーのボタンにフォーカスが残っていても、最初のクリックから拡大縮小できるよう Space の状態は常に追う。
   if (event.code === 'Space') spaceHeld = true;
+  updateClickZoomCursor(event);
   const target = event.target as HTMLElement;
   if (target.closest('input,select,button')) return;
   const key = event.key.toLowerCase();
@@ -602,8 +609,9 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('keyup', (event) => {
   // macOS では ⌘ を押している間に離したキーの keyup が届かないため、⌘ を離した時点で Space も離れたとみなす。
   if (event.code === 'Space' || event.key === 'Meta') spaceHeld = false;
+  updateClickZoomCursor(event);
 });
 // Spotlight などに奪われて keyup を受け取れなかったときに押しっぱなし扱いが残らないようにする。
-window.addEventListener('blur', () => { spaceHeld = false; });
+window.addEventListener('blur', () => { spaceHeld = false; updateClickZoomCursor(); });
 
 applyLanguage();
