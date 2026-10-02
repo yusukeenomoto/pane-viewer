@@ -384,11 +384,13 @@ function changeGrid(rows: GridDimension, columns: GridDimension) {
 
 let toastTimer = 0;
 
-function toast(message: string, action?: { label: string; run: () => void }) {
+type ToastAction = { label: string; run: () => void };
+
+function toast(message: string, actions: ToastAction[] = []) {
   const element = document.querySelector<HTMLElement>('#toast')!;
   element.textContent = message;
-  element.classList.toggle('actionable', Boolean(action));
-  if (action) {
+  element.classList.toggle('actionable', actions.length > 0);
+  for (const action of actions) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'toast-action';
@@ -398,7 +400,7 @@ function toast(message: string, action?: { label: string; run: () => void }) {
   }
   element.classList.add('visible');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => element.classList.remove('visible'), action ? 9000 : 2200);
+  toastTimer = window.setTimeout(() => element.classList.remove('visible'), actions.length ? 9000 : 2200);
 }
 
 function saveExportOptions() {
@@ -430,15 +432,14 @@ async function toggleRecording() {
       // 動画が主、操作ログは従。ログ側で失敗しても動画の保存は済ませておく。
       const stamp = timestamp();
       const video = download(blob, format.extension, stamp);
-      // 2つ目の自動ダウンロードはブラウザに黙って捨てられることがあるため、
-      // 手動で取り直せるボタンをトーストに残す。
+      // 自動で落とすのは動画だけにする。続けて2つ流すと、どちらかが黙って
+      // 捨てられる。Chrome では2つ目が、Safari では1つ目が落ちることを実測した。
+      // 操作ログは押したときだけ保存する。クリックは利用者の操作なので確実に通る。
       const saveLog = () => download(new Blob([JSON.stringify({ ...timeline, video }, null, 2)], { type: 'application/json' }), 'json', stamp);
-      try {
-        saveLog();
-        toast(t('recordingSaved', { seconds: seconds.toFixed(1), format: format.extension.toUpperCase() }), { label: t('saveLogAgain'), run: saveLog });
-      } catch {
-        toast(t('recordingLogFailed'), { label: t('saveLogAgain'), run: saveLog });
-      }
+      toast(t('recordingSaved', { seconds: seconds.toFixed(1), format: format.extension.toUpperCase() }), [
+        { label: t('saveLogAgain'), run: saveLog },
+        { label: t('saveVideoAgain'), run: () => download(blob, format.extension, stamp) },
+      ]);
       if (format.extension === 'webm') setTimeout(() => toast(t('recordingWebmNote')), 2400);
     } catch (error) {
       failure(error);

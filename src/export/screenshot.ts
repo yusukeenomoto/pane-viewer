@@ -74,6 +74,15 @@ export function timestamp(date = new Date()) {
 // 動画と操作ログを同じ名前で並べるため、呼び出し側が時刻を渡せるようにしている。
 export function download(blob: Blob, extension: 'png' | 'mp4' | 'webm' | 'json', stamp = timestamp()) {
   const name = `compare_${stamp}.${extension}`;
-  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  // Safari は文書に入っていない要素のクリックを無視する。付けて押して外す。
+  link.style.display = 'none';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return name;
 }

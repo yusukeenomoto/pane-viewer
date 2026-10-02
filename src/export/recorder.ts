@@ -20,6 +20,10 @@ const CANDIDATES: RecordingFormat[] = [
 
 export interface RecordingFormat { mimeType: string; extension: 'mp4' | 'webm' }
 
+// 保存する Blob には codecs を付けない。記録には必要だが、ファイルの型としては
+// 'video/mp4' で足りる。パラメータ付きの型を嫌うブラウザがある。
+const fileType = (format: RecordingFormat) => format.mimeType.split(';')[0];
+
 export interface RecorderSource {
   panes: () => Pane[];
   getView: (id: PaneId) => ViewState;
@@ -106,6 +110,10 @@ export class SessionRecorder {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error(t('canvasInit'));
 
+    // WebKit は文書に入っていない canvas の captureStream がフレームを出さない。
+    // 画面には出さず、描画は続く位置へ置く（display:none だと描画が止まる）。
+    canvas.style.cssText = 'position:fixed;left:-20000px;top:0;pointer-events:none;';
+    document.body.append(canvas);
     const stream = canvas.captureStream(FPS);
     const bitrate = Math.min(16_000_000, Math.max(2_000_000, Math.round(canvas.width * canvas.height * FPS * 0.12)));
     const recorder = new MediaRecorder(stream, { mimeType: format.mimeType, videoBitsPerSecond: bitrate });
@@ -194,13 +202,14 @@ export class SessionRecorder {
     const timeline = this.timeline!;
     timeline.duration = round(seconds, 2);
     const blob = await new Promise<Blob>((resolve, reject) => {
-      recorder.onstop = () => resolve(new Blob(this.chunks, { type: format.mimeType }));
+      recorder.onstop = () => resolve(new Blob(this.chunks, { type: fileType(format) }));
       recorder.onerror = () => reject(new Error(t('recordingError', { message: t('recordingFailed') })));
-      if (recorder.state === 'inactive') resolve(new Blob(this.chunks, { type: format.mimeType }));
+      if (recorder.state === 'inactive') resolve(new Blob(this.chunks, { type: fileType(format) }));
       else recorder.stop();
     });
     for (const track of recorder.stream.getTracks()) track.stop();
     this.recorder = undefined;
+    this.canvas?.remove();
     this.canvas = undefined;
     this.ctx = undefined;
     this.chunks = [];
