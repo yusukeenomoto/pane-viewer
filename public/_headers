@@ -1,0 +1,15 @@
+# Cloudflare Workers の静的アセット配信は、このファイルを見て応答ヘッダーを足す。
+# ビルドで dist/ へコピーされる。コンテナ版（docker/security-headers.conf）と同じ内容。
+#
+# blob: が必要な理由: 読み込んだ画像・PDF・TIFFはすべてブラウザ内で Blob URL に
+# 変換して <img> に渡している。外部への送信は一切行わない。
+# wasm-unsafe-eval は PDF.js の一部の画像デコーダが WebAssembly を使うため。
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self' blob:
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: camera=(), geolocation=(), microphone=(), payment=(), usb=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-Permitted-Cross-Domain-Policies: none

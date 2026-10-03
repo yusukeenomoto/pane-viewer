@@ -1,5 +1,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
-public/
+# public/ の中身は prebuild で生成する（PDF.js の cmaps と standard_fonts）。
+# _headers だけは手で書く配信設定なので追跡する。
+public/*
+!public/_headers
 .DS_Store
