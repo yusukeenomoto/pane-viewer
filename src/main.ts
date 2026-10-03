@@ -99,7 +99,7 @@ app.innerHTML = `
           <label><input id="labels" type="checkbox" checked /> <span data-i18n="labels">${t('labels')}</span></label>
           <label><input id="divider" type="checkbox" checked /> <span data-i18n="divider">${t('divider')}</span></label>
           <select id="background" aria-label="${t('background')}" data-i18n-attr="aria-label:background"><option value="dark" data-i18n="dark">${t('dark')}</option><option value="light" data-i18n="light">${t('light')}</option><option value="transparent" data-i18n="transparent">${t('transparent')}</option></select>
-          <button id="save" type="button" title="${t('saveTitle')}" data-i18n="save" data-i18n-attr="title:saveTitle">${t('save')}</button>
+          <button id="save" type="button" title="${t('saveTitle')}" data-i18n-attr="title:saveTitle"><span class="btn-icon icon-camera" aria-hidden="true"></span><span data-i18n="save">${t('save')}</span></button>
           <!-- ボタンは出さないが、Ctrl/⌘+Shift+C でのコピーは使えるようにしておく。 -->
           <button id="copy" type="button" title="${t('copyTitle')}" data-i18n="copy" data-i18n-attr="title:copyTitle" hidden>${t('copy')}</button>
           <button id="record" type="button" title="${t('recordTitle')}" aria-pressed="false">${t('record')}</button>

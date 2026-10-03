@@ -18,6 +18,11 @@ button { cursor: pointer; } button:hover:not(:disabled) { background: #343d51; }
 #scale-input { width: 76px; min-height: 30px; padding: 3px 5px; text-align: right; font-variant-numeric: tabular-nums; }
 #scale-input:disabled { opacity: .55; cursor: not-allowed; }
 .scale-unit { color: #b9c6e5; }
+/* ボタンのアイコン。原本は src/assets/camera-icon.svg（見出し要素だけ省いてマスクに埋め込み）。
+   マスクなので色は currentColor に従い、背景色を変えても文字色と揃う。 */
+.btn-icon { display: inline-block; flex: 0 0 auto; width: 15px; height: 15px; background-color: currentColor; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center; -webkit-mask-size: contain; mask-size: contain; }
+.icon-camera { -webkit-mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 128 128%27><path fill=%27%23fff%27 fill-rule=%27evenodd%27 d=%27M17 36h18l7-12h30l8 12h18c8 0 14 6 14 14v47c0 8-6 14-14 14H17c-8 0-14-6-14-14V50c0-8 6-14 14-14Zm47 66a29 29 0 1 0 0-58 29 29 0 0 0 0 58Zm38-49a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z%27/><path fill=%27%23fff%27 fill-rule=%27evenodd%27 d=%27M64 50a23 23 0 1 0 0 46 23 23 0 0 0 0-46Zm0 7a16 16 0 1 1 0 32 16 16 0 0 1 0-32Z%27/><circle cx=%2764%27 cy=%2773%27 r=%279%27 fill=%27%23fff%27/></svg>"); mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 128 128%27><path fill=%27%23fff%27 fill-rule=%27evenodd%27 d=%27M17 36h18l7-12h30l8 12h18c8 0 14 6 14 14v47c0 8-6 14-14 14H17c-8 0-14-6-14-14V50c0-8 6-14 14-14Zm47 66a29 29 0 1 0 0-58 29 29 0 0 0 0 58Zm38-49a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z%27/><path fill=%27%23fff%27 fill-rule=%27evenodd%27 d=%27M64 50a23 23 0 1 0 0 46 23 23 0 0 0 0-46Zm0 7a16 16 0 1 1 0 32 16 16 0 0 1 0-32Z%27/><circle cx=%2764%27 cy=%2773%27 r=%279%27 fill=%27%23fff%27/></svg>"); }
+#save { display: inline-flex; align-items: center; gap: 6px; }
 #sync.active { background: #195d50; border-color: #36b999; color: #dcfff6; }
 #record.recording { background: #6e1f2b; border-color: #e0576f; color: #ffe2e7; font-variant-numeric: tabular-nums; }
 .panes { display: grid; min-height: 0; gap: 2px; background: #687086; }

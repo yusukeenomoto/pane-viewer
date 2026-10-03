@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Camera icon</title>
+  <path fill="#fff" fill-rule="evenodd" d="M17 36h18l7-12h30l8 12h18c8 0 14 6 14 14v47c0 8-6 14-14 14H17c-8 0-14-6-14-14V50c0-8 6-14 14-14Zm47 66a29 29 0 1 0 0-58 29 29 0 0 0 0 58Zm38-49a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/>
+  <path fill="#fff" fill-rule="evenodd" d="M64 50a23 23 0 1 0 0 46 23 23 0 0 0 0-46Zm0 7a16 16 0 1 1 0 32 16 16 0 0 1 0-32Z"/>
+  <circle cx="64" cy="73" r="9" fill="#fff"/>
+</svg>
