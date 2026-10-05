@@ -591,6 +591,10 @@ window.addEventListener('keydown', (event) => {
     if (event.shiftKey) void capture(true); else void capture();
     return;
   }
+  // ここから下は修飾キー無しの1文字。⌘/Ctrl/Alt が付いていたら手を出さない。
+  // ⌘R を R として受けると回転が起き、ブラウザの再読み込みも奪ってしまう。
+  // ⌘H（隠す）、⌘0/⌘+/⌘-（ブラウザの拡大）、Alt+矢印（戻る/進む）も同じ。
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (key === 's') { if (event.shiftKey) alignPanes(); else { store.setSync(!store.sync); persistSettings(); } }
   else if (key === 'r') rotate(event.shiftKey ? -90 : 90);
   else if (key === 'h') flip('flipH');

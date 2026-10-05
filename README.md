@@ -46,6 +46,10 @@ Drop a file onto a pane, or click an empty pane to pick one.
 | `Ctrl`(`⌘`)`+S` | Save a PNG |
 | `Ctrl`(`⌘`)`+Shift+C` | Copy a PNG to the clipboard |
 
+Single-key shortcuts fire only without a modifier, so `⌘R`, `⌘H` and the rest
+stay with the browser. The combinations with `Ctrl`(`⌘`) above are the only
+exceptions.
+
 The recording button writes `compare_<timestamp>.mp4` (or `.webm`) plus
 `compare_<timestamp>.json`. Browsers allow only one automatic download at a
 time, so the toast keeps a button to save the log by hand if the second file is
