@@ -2,6 +2,7 @@ import type { DecodedTiffPage, ImageAsset, PdfResolution } from '../types';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { t } from '../i18n';
+import { MAX_PIXELS, TOO_LARGE } from './limits';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -14,7 +15,8 @@ tiffWorker.onmessage = (event: MessageEvent<{ ok: boolean; pages?: DecodedTiffPa
   if (!entry) return;
   pending.delete(response.id!);
   clearTimeout(entry.timer);
-  if (response.ok && response.pages) entry.resolve(response.pages); else entry.reject(new Error(t('tiffDecodeError')));
+  if (response.ok && response.pages) entry.resolve(response.pages);
+  else entry.reject(new Error(t(response.error === TOO_LARGE ? 'imageTooLarge' : 'tiffDecodeError')));
 };
 
 tiffWorker.onerror = () => {
@@ -114,9 +116,8 @@ async function renderPdfPage(pdfDocument: PDFDocumentProxy, pageNumber: number, 
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
-    const context = canvas.getContext('2d', { alpha: false });
-    if (!context) throw new Error(t('pdfCanvasInit'));
-    await page.render({ canvasContext: context, viewport }).promise;
+    if (canvas.width * canvas.height > MAX_PIXELS) throw new Error(t('imageTooLarge'));
+    await page.render({ canvas, viewport }).promise;
     const objectUrl = await canvasBlobUrl(canvas);
     const image = await imageFromUrl(objectUrl);
     return { image, objectUrl, width: canvas.width, height: canvas.height };
@@ -128,12 +129,15 @@ async function renderPdfPage(pdfDocument: PDFDocumentProxy, pageNumber: number, 
 async function loadPdf(file: File, pageNumber = 1, resolution: PdfResolution = 144): Promise<ImageAsset> {
   // フォントを埋め込んでいないPDFでは、これらを渡さないと本文が描画されない。
   // CJKには cmaps、標準14フォントには standard_fonts が要る。
+  // JPEG2000・JBIG2 の画像デコーダーは wasm/、CMYKの色変換は iccs/ から取得する。
   const base = import.meta.env.BASE_URL;
   const loadingTask = getDocument({
     data: await file.arrayBuffer(),
     cMapUrl: `${base}cmaps/`,
     cMapPacked: true,
     standardFontDataUrl: `${base}standard_fonts/`,
+    wasmUrl: `${base}wasm/`,
+    iccUrl: `${base}iccs/`,
   });
   let document: PDFDocumentProxy | undefined;
   try {

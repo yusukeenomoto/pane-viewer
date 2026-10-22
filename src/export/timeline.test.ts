@@ -9,6 +9,7 @@ const base = (events: Timeline['events']): Timeline => ({
 });
 
 const full = { file: 'a.png', scale: 1, x: 0, y: 0, rotation: 0 as const, flipH: false, flipV: false, page: null };
+const BASE_STATE = { ...full, file: null };
 
 describe('parseTimeline', () => {
   it('自分が書き出したJSONを受け入れる', () => {
@@ -83,6 +84,25 @@ describe('foldTimeline', () => {
       { t: 3, panes: { 'pane-1': { file: 'b.png', scale: 0.5 } } },
     ]));
     expect(folded.panes.get('pane-1')).toEqual({ ...full, file: 'b.png', scale: 0.5 });
+  });
+
+  it('型や範囲の合わない値を捨てて直前の値を残す', () => {
+    const folded = foldTimeline(base([
+      { t: 0, panes: { 'pane-0': full } },
+      { t: 1, panes: { 'pane-0': { scale: 'x', x: NaN, y: Infinity, rotation: 45, flipH: 1, page: 0, file: 3 } as never } },
+    ]));
+    expect(folded.panes.get('pane-0')).toEqual(full);
+  });
+
+  it('倍率を画面操作と同じ範囲に収める', () => {
+    const folded = foldTimeline(base([{ t: 0, panes: { 'pane-0': { ...full, scale: 1e9 } } }, { t: 1, panes: { 'pane-1': { scale: 1e-9 } } }]));
+    expect(folded.panes.get('pane-0')?.scale).toBe(64);
+    expect(folded.panes.get('pane-1')?.scale).toBe(0.01);
+  });
+
+  it('壊れたイベントで例外を投げない', () => {
+    const folded = foldTimeline(base([null, 1, { t: 0, panes: [] }, { t: 1, panes: { 'pane-0': null } }] as never));
+    expect(folded.panes.get('pane-0')).toEqual(BASE_STATE);
   });
 
   it('ファイルが外されたことを null として保持する', () => {

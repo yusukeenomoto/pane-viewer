@@ -32,7 +32,7 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.4.299",
     "utif": "^3.1.0"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 declare module 'utif' {
   const UTIF: {
-    decode(buffer: ArrayBuffer): Array<{ width: number; height: number; bitsPerSample?: number[] }>;
+    decode(buffer: ArrayBuffer): Array<{ width: number; height: number; bitsPerSample?: number[]; t256?: number[]; t257?: number[] }>;
     decodeImage(buffer: ArrayBuffer, ifd: unknown, ifds: unknown[]): void;
     toRGBA8(ifd: unknown): Uint8Array;
   };

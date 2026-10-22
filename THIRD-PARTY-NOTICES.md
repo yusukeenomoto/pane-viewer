@@ -4,7 +4,7 @@
 
 ## PDF.js
 
-- Package: `pdfjs-dist` 4.10.38
+- Package: `pdfjs-dist` 6.4.299
 - Copyright: Mozilla Foundation and contributors
 - License: Apache License 2.0
 - Source: https://github.com/mozilla/pdfjs-dist
@@ -28,6 +28,18 @@ CJKのPDFを表示するために配布物へ含めています。
 - Source: https://github.com/mozilla/pdfjs-dist
 
 フォントを埋め込んでいないPDFの標準14フォントを表示するために配布物へ含めています。
+
+## PDF.js image decoders and color profiles (PDF.js 同梱)
+
+- Path: `wasm/`
+  - OpenJPEG（`openjpeg.wasm`）: Copyright (c) 2002-2014, Universite catholique de Louvain (UCL), Belgium ほか。BSD 2-Clause（全文は `wasm/LICENSE_OPENJPEG` を参照）
+  - JBIG2（`jbig2.wasm`）: Copyright 2014 The PDFium Authors. BSD 3-Clause 相当（全文は `wasm/LICENSE_JBIG2` を参照）
+  - qcms（`qcms_bg.wasm`）: Copyright (C) 2009-2024 Mozilla Corporation / Copyright (C) 1998-2007 Marti Maria. MIT License（全文は `wasm/LICENSE_QCMS` を参照）
+  - PDF.js 側の結合部分のライセンスは `wasm/LICENSE_PDFJS_*` を参照
+- Path: `iccs/` — CC0 1.0 Universal（全文は `iccs/LICENSE` を参照）
+- Source: https://github.com/mozilla/pdfjs-dist
+
+JPEG2000・JBIG2 で圧縮された画像と、CMYKの色変換を表示するために配布物へ含めています。
 
 ## UTIF.js
 
