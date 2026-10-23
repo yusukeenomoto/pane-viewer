@@ -154,6 +154,7 @@ function callbacks(id: PaneId) {
     onFit: fit,
     onDuplicate: duplicatePane,
     onSwap: swapPanes,
+    onFiles: (value: PaneId, files: File[]) => { void loadFiles(value, files); },
     getPdfResolution: () => pdfResolution,
     getClickZoom: (event: MouseEvent) => clickZoomFactor(event, spaceHeld, isMac),
   };
@@ -211,11 +212,35 @@ function nextGridFor(required: number) {
   return candidates.find((grid) => grid.rows * grid.columns >= required);
 }
 
+// 読み込み待ちのペインも予約し、別の一括取り込み先と重ならないようにする。
+const pendingFiles = new Map<PaneId, symbol>();
+async function loadFiles(id: PaneId, files: File[]) {
+  if (!files.length || !paneIds.includes(id)) return;
+  const targets = [id, ...paneIds.filter((other) => other !== id && !paneFor(other).asset && !pendingFiles.has(other))];
+  const selected = targets.slice(0, files.length);
+  const batch = Symbol();
+  selected.forEach((target) => pendingFiles.set(target, batch));
+  const required = Math.max(...selected.map((target) => paneIds.indexOf(target))) + 1;
+  if (required > store.rows * store.columns) {
+    const next = nextGridFor(required)!;
+    changeGrid(next.rows, next.columns);
+  }
+  if (files.length > selected.length) toast(t('filesSkipped', { count: files.length - selected.length }));
+  // 表示が広がってから読み込み、Fit がペインの大きさを取得できるようにする。
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  // PDF/TIFFを同時に復号してメモリを使い切らないよう、順番に読み込む。
+  for (const [index, target] of selected.entries()) {
+    if (pendingFiles.get(target) !== batch) continue;
+    try { await paneFor(target).setFile(files[index]); }
+    finally { if (pendingFiles.get(target) === batch) pendingFiles.delete(target); }
+  }
+}
+
 function duplicatePane(id: PaneId) {
   const sourcePane = paneFor(id);
   const source = sourcePane.asset;
   if (!source) return;
-  const targetIndex = paneIds.findIndex((paneId) => paneId !== id && !paneFor(paneId).asset);
+  const targetIndex = paneIds.findIndex((paneId) => paneId !== id && !paneFor(paneId).asset && !pendingFiles.has(paneId));
   if (targetIndex < 0) { toast(t('noEmptyPane')); return; }
   const target = paneFor(paneIds[targetIndex]);
   const required = targetIndex + 1;

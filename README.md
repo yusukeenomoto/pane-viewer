@@ -13,6 +13,7 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 ## Features
 
 - Arrange panes in a grid of 1–3 rows and 1–3 columns; drag a pane header to swap two panes.
+- Import multiple files at once by dropping or selecting them, automatically expanding the grid up to nine panes.
 - Open images, multi-page PDFs, and multi-page TIFFs (16-bit TIFFs are converted for display).
 - Choose the rendering resolution for PDFs, from 72 to 300 dpi.
 - Synchronize zooming and panning while keeping each pane's own offset and scale, or inspect panes independently. "Align" copies the active pane's view to every pane.
@@ -26,7 +27,15 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 
 ## Usage
 
-Drop a file onto a pane, or click an empty pane to pick one.
+Drop one or more files onto a pane, or click an empty pane to select files.
+The first file replaces the target pane; the rest fill empty panes in pane order.
+The grid expands automatically, up to nine panes. Other loaded images are kept;
+if there is not enough room, a message reports how many files were not loaded.
+Click a loaded pane's file name to choose replacement files.
+
+複数ファイルのドロップ・選択に対応しています。1枚目を操作したペインへ、残りを空きペインへ
+順に配置し、最大9ペインまで表示を自動で広げます。ほかの画像は保持し、空きが足りない分は
+件数を通知します。読み込み済みのファイル名をクリックして、別のファイルへ変更できます。
 
 | Input | Action |
 | --- | --- |
@@ -64,17 +73,22 @@ relies on widely supported APIs.
 
 ## Development
 
+Use Node.js **24.22.1**, matching the Duo Checker build environment.
+The version is recorded in `.nvmrc` and used by CI.
+
 ```sh
-npm install
+nvm install
+nvm use
+npm ci
 npm run dev        # http://localhost:5173
 npm test           # vitest
 npm run typecheck
 npm run build      # production build into dist/
 ```
 
-`predev` and `prebuild` copy PDF.js's `cmaps/` and `standard_fonts/` into
+`predev` and `prebuild` copy PDF.js's `cmaps/`, `standard_fonts/`, `wasm/` and `iccs/` into
 `public/`. Without them, PDFs whose fonts are not embedded render with missing
-text, so do not remove that step. `public/` is generated and is not tracked.
+text, so do not remove that step. Generated PDF.js files are not tracked; `public/_headers` and `public/favicon.svg` are tracked.
 
 Tests cover the parts that can break silently: the relative-sync transform,
 orientation math, the operation-log format, trackpad detection, and settings

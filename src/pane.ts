@@ -14,6 +14,7 @@ export interface PaneCallbacks {
   onFit(id: PaneId): void;
   onDuplicate(id: PaneId): void;
   onSwap(source: PaneId, target: PaneId): void;
+  onFiles(id: PaneId, files: File[]): void;
   getPdfResolution(): PdfResolution;
   getClickZoom(event: MouseEvent): number | undefined;
 }
@@ -42,7 +43,7 @@ export class Pane {
     this.element = document.createElement('section');
     this.element.className = 'pane'; this.element.dataset.pane = id; this.element.tabIndex = 0;
     this.element.setAttribute('aria-label', t('paneAria', { label }));
-    this.element.innerHTML = `<div class="pane-header"><strong>${label}</strong><span class="independent" hidden>${t('independent')}</span><span class="orientation" hidden></span><span class="pane-actions"><button class="duplicate" type="button" aria-label="${t('duplicateAria', { label })}" title="${t('duplicate')}" hidden>${t('duplicate')}</button><button class="close" type="button" aria-label="${t('closeAria', { label })}" title="${t('close')}" hidden>${t('close')}</button></span></div><div class="stage"><img draggable="false" alt="" /><div class="message">${t('emptyMessage')}</div><div class="pages" hidden></div></div><div class="pane-meta"><button class="file-name" type="button" title="${t('fileChangeTitle')}" hidden></button><span class="meta-details"></span></div><input class="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml,image/tiff,.tif,.tiff,application/pdf,.pdf" aria-label="${t('fileInputAria', { label })}" />`;
+    this.element.innerHTML = `<div class="pane-header"><strong>${label}</strong><span class="independent" hidden>${t('independent')}</span><span class="orientation" hidden></span><span class="pane-actions"><button class="duplicate" type="button" aria-label="${t('duplicateAria', { label })}" title="${t('duplicate')}" hidden>${t('duplicate')}</button><button class="close" type="button" aria-label="${t('closeAria', { label })}" title="${t('close')}" hidden>${t('close')}</button></span></div><div class="stage"><img draggable="false" alt="" /><div class="message">${t('emptyMessage')}</div><div class="pages" hidden></div></div><div class="pane-meta"><button class="file-name" type="button" title="${t('fileChangeTitle')}" hidden></button><span class="meta-details"></span></div><input class="file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml,image/tiff,.tif,.tiff,application/pdf,.pdf" aria-label="${t('fileInputAria', { label })}" />`;
     this.header = this.element.querySelector('.pane-header')!;
     this.stage = this.element.querySelector('.stage')!;
     this.imageEl = this.element.querySelector('img')!;
@@ -68,7 +69,11 @@ export class Pane {
     duplicate.addEventListener('click', (event) => { event.stopPropagation(); this.callbacks.onDuplicate(this.id); });
     close.addEventListener('click', (event) => { event.stopPropagation(); this.clear(); });
     this.element.addEventListener('click', (event) => { if (!this.asset && event.target !== input) input.click(); this.element.focus(); });
-    input.addEventListener('change', () => { const file = input.files?.[0]; if (file) void this.setFile(file); input.value = ''; });
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files ?? []);
+      input.value = '';
+      if (files.length) this.callbacks.onFiles(this.id, files);
+    });
     this.element.addEventListener('dragover', (event) => {
       event.preventDefault();
       if (event.dataTransfer?.types.includes('application/x-image-viewer-pane')) this.element.classList.add('pane-drop-target');
@@ -81,8 +86,8 @@ export class Pane {
       this.element.classList.remove('dragging'); this.element.classList.remove('pane-drop-target');
       const sourceId = event.dataTransfer?.getData('application/x-image-viewer-pane');
       if (sourceId) { if (sourceId !== this.id) this.callbacks.onSwap(sourceId, this.id); return; }
-      const file = event.dataTransfer?.files[0];
-      if (file) void this.setFile(file);
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length) this.callbacks.onFiles(this.id, files);
     });
     this.pages.addEventListener('pointerdown', (event) => event.stopPropagation());
     this.pages.addEventListener('pointermove', (event) => event.stopPropagation());
