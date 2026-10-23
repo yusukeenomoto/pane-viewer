@@ -1,8 +1,9 @@
 node_modules/
 dist/
 *.tsbuildinfo
-# public/ の中身は prebuild で生成する（PDF.js の cmaps と standard_fonts）。
-# _headers だけは手で書く配信設定なので追跡する。
+# public/ の生成物（PDF.js の cmaps と standard_fonts）は除外する。
+# 手で管理する配信設定と favicon は追跡する。
 public/*
 !public/_headers
+!public/favicon.svg
 .DS_Store
