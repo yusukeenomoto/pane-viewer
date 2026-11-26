@@ -1,9 +1,10 @@
 import './style.css';
-import { makeScreenshot, download, timestamp } from './export/screenshot';
+import { makeCheckedImage, makeScreenshot, download, timestamp } from './export/screenshot';
 import { SessionRecorder, supportedFormat } from './export/recorder';
 import { foldTimeline, parseTimeline, type Timeline, type TimelinePaneState } from './export/timeline';
 import { ALL_PANES, FOLLOW_SYNC, orientationTargetIds } from './utils/targets';
 import { clickZoomFactor } from './utils/zoomClick';
+import { CHECK_SIZE_MAX, CHECK_SIZE_MIN, checkedFileName, clampCheckSize, isHexColor, parseCheckStyle, type CheckStyle } from './utils/marks';
 import { Pane } from './pane';
 import { getSettings, saveSettings, ViewStore } from './state';
 import type { ExportOptions, GridDimension, PaneId, PdfResolution } from './types';
@@ -27,6 +28,11 @@ let exportOptions: ExportOptions = (() => {
     return { labels: true, divider: true, background: 'dark' };
   }
 })();
+const checkStyleKey = 'image-viewer.check.v1';
+const checkStyle: CheckStyle = (() => {
+  try { return parseCheckStyle(localStorage.getItem(checkStyleKey)); } catch { return parseCheckStyle(null); }
+})();
+let checkMode = false;
 const targetOptions = paneIds.map((id, index) => `<option value="${id}">${paneLabel(index)}</option>`).join('');
 
 app.innerHTML = `
@@ -104,6 +110,20 @@ app.innerHTML = `
           <button id="copy" type="button" title="${t('copyTitle')}" data-i18n="copy" data-i18n-attr="title:copyTitle" hidden>${t('copy')}</button>
           <button id="record" type="button" title="${t('recordTitle')}" aria-pressed="false">${t('record')}</button>
         </div>
+        <div class="tool-group check-tools">
+          <button id="check-mode" type="button" aria-pressed="false" title="${t('checkModeTitle')}" data-i18n="checkMode" data-i18n-attr="title:checkModeTitle">${t('checkMode')}</button>
+          <label class="check-color" title="${t('checkColor')}" data-i18n-attr="title:checkColor"><span data-i18n="checkColor">${t('checkColor')}</span>
+            <input id="check-color" type="color" aria-label="${t('checkColor')}" data-i18n-attr="aria-label:checkColor" />
+          </label>
+          <label class="check-size"><span data-i18n="checkSize">${t('checkSize')}</span>
+            <input id="check-size" type="range" min="${CHECK_SIZE_MIN}" max="${CHECK_SIZE_MAX}" step="2" aria-label="${t('checkSize')}" data-i18n-attr="aria-label:checkSize" />
+            <output id="check-size-value" for="check-size"></output>
+          </label>
+          <span class="check-preview" aria-hidden="true"><svg viewBox="-0.6 -0.6 1.2 1.2"><path d="M-0.42 0.02L-0.12 0.34L0.42 -0.36" /></svg></span>
+          <button id="check-undo" type="button" title="${t('undoCheckTitle')}" data-i18n="undoCheck" data-i18n-attr="title:undoCheckTitle">${t('undoCheck')}</button>
+          <button id="check-clear" type="button" title="${t('clearChecksTitle')}" data-i18n="clearChecks" data-i18n-attr="title:clearChecksTitle">${t('clearChecks')}</button>
+          <button id="check-export" type="button" title="${t('exportCheckedTitle')}" data-i18n="exportChecked" data-i18n-attr="title:exportCheckedTitle">${t('exportChecked')}</button>
+        </div>
       </div>
     </header>
     <section id="panes" class="panes" aria-label="${t('compareImages')}" data-i18n-attr="aria-label:compareImages"></section>
@@ -157,6 +177,8 @@ function callbacks(id: PaneId) {
     onFiles: (value: PaneId, files: File[]) => { void loadFiles(value, files); },
     getPdfResolution: () => pdfResolution,
     getClickZoom: (event: MouseEvent) => clickZoomFactor(event, spaceHeld, isMac),
+    getCheckMode: () => checkMode,
+    getCheckStyle: () => checkStyle,
   };
 }
 
@@ -314,6 +336,60 @@ function render() {
   const record = document.querySelector<HTMLButtonElement>('#record')!;
   record.disabled = !recordingFormat || (!hasImage && !recorder.recording);
   renderRecordButton();
+  renderCheckTools();
+}
+
+function renderCheckTools() {
+  const activePane = paneFor(store.active);
+  const button = document.querySelector<HTMLButtonElement>('#check-mode')!;
+  button.classList.toggle('active', checkMode);
+  button.setAttribute('aria-pressed', String(checkMode));
+  if (checkMode) panesElement.dataset.checkMode = ''; else delete panesElement.dataset.checkMode;
+  document.querySelector<HTMLButtonElement>('#check-undo')!.disabled = !activePane.canUndoMark;
+  document.querySelector<HTMLButtonElement>('#check-clear')!.disabled = !activePane.marks.length;
+  document.querySelector<HTMLButtonElement>('#check-export')!.disabled = !activePane.asset;
+}
+
+function applyCheckStyle() {
+  document.querySelector<HTMLInputElement>('#check-color')!.value = checkStyle.color;
+  document.querySelector<HTMLInputElement>('#check-size')!.value = String(checkStyle.size);
+  document.querySelector<HTMLOutputElement>('#check-size-value')!.textContent = `${checkStyle.size}px`;
+  const preview = document.querySelector<HTMLElement>('.check-preview')!;
+  preview.style.color = checkStyle.color;
+  // ツールバーに収まる範囲で、大きさの違いが見て分かるようにする。
+  preview.style.setProperty('--check-preview-size', `${Math.round(10 + (checkStyle.size - CHECK_SIZE_MIN) / (CHECK_SIZE_MAX - CHECK_SIZE_MIN) * 18)}px`);
+}
+
+function saveCheckStyle() {
+  try { localStorage.setItem(checkStyleKey, JSON.stringify(checkStyle)); } catch { /* optional */ }
+}
+
+function toggleCheckMode() {
+  checkMode = !checkMode;
+  toast(checkMode ? t('checkModeOn') : t('checkModeOff'));
+  schedule();
+}
+
+function undoCheck() {
+  if (paneFor(store.active).undoMark()) schedule();
+}
+
+function clearChecks() {
+  if (paneFor(store.active).clearMarks()) toast(t('checksCleared'));
+}
+
+async function exportChecked() {
+  const pane = paneFor(store.active);
+  const asset = pane.asset;
+  if (!asset) return;
+  try {
+    const blob = await makeCheckedImage(pane);
+    const multiPage = (asset.tiff?.pages.length ?? asset.pdf?.pageCount ?? 0) > 1;
+    const name = download(blob, 'png', undefined, checkedFileName(asset.name, multiPage ? pane.page : undefined, timestamp()));
+    toast(t('checkedSaved', { name }));
+  } catch (error) {
+    toast(t('exportError', { message: error instanceof Error ? error.message : t('noImage') }));
+  }
 }
 
 function renderRecordButton() {
@@ -595,6 +671,24 @@ for (const [selector, field] of [['#labels', 'labels'], ['#divider', 'divider'],
   });
 }
 
+document.querySelector('#check-mode')!.addEventListener('click', toggleCheckMode);
+document.querySelector('#check-undo')!.addEventListener('click', undoCheck);
+document.querySelector('#check-clear')!.addEventListener('click', clearChecks);
+document.querySelector('#check-export')!.addEventListener('click', () => void exportChecked());
+document.querySelector('#check-color')!.addEventListener('input', (event) => {
+  const value = (event.currentTarget as HTMLInputElement).value;
+  if (!isHexColor(value)) return;
+  checkStyle.color = value.toLowerCase();
+  applyCheckStyle();
+  saveCheckStyle();
+});
+document.querySelector('#check-size')!.addEventListener('input', (event) => {
+  checkStyle.size = clampCheckSize((event.currentTarget as HTMLInputElement).value);
+  applyCheckStyle();
+  saveCheckStyle();
+});
+applyCheckStyle();
+
 document.querySelector('#save')!.addEventListener('click', () => void capture());
 document.querySelector('#copy')!.addEventListener('click', () => void capture(true));
 window.addEventListener('resize', schedule);
@@ -611,7 +705,7 @@ window.addEventListener('keydown', (event) => {
   const target = event.target as HTMLElement;
   if (target.closest('input,select,button')) return;
   const key = event.key.toLowerCase();
-  // 修飾キー付きで受けるのは ⌘S（書き出し）と ⌘Shift+C（複製）の2つだけ。
+  // 修飾キー付きで受けるのは ⌘S（書き出し）、⌘Shift+C（複製）、チェック中の ⌘Z（取り消し）だけ。
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === 's') {
     event.preventDefault();
     void capture();
@@ -624,6 +718,12 @@ window.addEventListener('keydown', (event) => {
     void capture(true);
     return;
   }
+  // ⌘Z はチェック中に限る。入力欄の外ではブラウザ側に使い道がないので奪っても困らない。
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && key === 'z' && checkMode) {
+    event.preventDefault();
+    undoCheck();
+    return;
+  }
   // ここから下は修飾キー無しの1文字。⌘/Ctrl/Alt が付いていたら手を出さない。
   // ⌘R を R として受けると回転が起き、ブラウザの再読み込みも奪ってしまう。
   // ⌘H（隠す）、⌘0/⌘+/⌘-（ブラウザの拡大）、Alt+矢印（戻る/進む）も同じ。
@@ -632,6 +732,8 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'r') rotate(event.shiftKey ? -90 : 90);
   else if (key === 'h') flip('flipH');
   else if (key === 'v') flip('flipV');
+  else if (key === 'c') toggleCheckMode();
+  else if (key === 'escape' && checkMode) toggleCheckMode();
   else if (key === '0') fitVisible();
   else if (key === '1') actual();
   else if (key === '+' || key === '=') { const rect = paneFor(store.active).rect; paneFor(store.active).zoomAt(rect.width / 2, rect.height / 2, 1.1); }

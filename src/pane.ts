@@ -1,6 +1,7 @@
 import { cloneImageAsset, createPdfPageAsset, loadImage, selectPdfPage, selectTiffPage } from './loader/loadImage';
 import { orientedSize, orientedToOriginal, originalToOriented, transformCss } from './utils/orientation';
 import { isTrackpadScroll } from './utils/wheel';
+import { CHECK_STROKE_RATIO, checkSvgPath, findMarkAt, scaleMarks, type CheckMark, type CheckStyle } from './utils/marks';
 import type { CursorInfo, ImageAsset, OrientationState, PaneId, PdfResolution, ViewState } from './types';
 import { DEFAULT_ORIENTATION } from './types';
 import { t } from './i18n';
@@ -17,7 +18,13 @@ export interface PaneCallbacks {
   onFiles(id: PaneId, files: File[]): void;
   getPdfResolution(): PdfResolution;
   getClickZoom(event: MouseEvent): number | undefined;
+  getCheckMode(): boolean;
+  getCheckStyle(): CheckStyle;
 }
+
+// 押してから離すまでにこれ以上動いたらパンとみなし、レ点は付けない。
+const TAP_SLOP = 4;
+const UNDO_LIMIT = 200;
 
 export class Pane {
   readonly element: HTMLElement;
@@ -31,19 +38,24 @@ export class Pane {
   readonly message: HTMLElement;
   readonly pages: HTMLElement;
   readonly fileInput: HTMLInputElement;
+  readonly marksEl: SVGSVGElement;
   asset?: ImageAsset;
   orientation: OrientationState = { ...DEFAULT_ORIENTATION };
   private pointers = new Map<number, { x: number; y: number }>();
   private drag?: { x: number; y: number; viewX: number; viewY: number };
   private pinch?: { distance: number; scale: number; centerX: number; centerY: number };
   private loadToken = 0;
+  private tap?: { pointerId: number; x: number; y: number };
+  // レ点はページごとに持つ。キーはページ送りの表示と同じ1始まり（単ページの画像は1）。
+  private marksByPage = new Map<number, CheckMark[]>();
+  private undoStack: Array<{ page: number; marks: CheckMark[] }> = [];
 
   constructor(readonly id: PaneId, label: string, private readonly callbacks: PaneCallbacks) {
     this.label = label;
     this.element = document.createElement('section');
     this.element.className = 'pane'; this.element.dataset.pane = id; this.element.tabIndex = 0;
     this.element.setAttribute('aria-label', t('paneAria', { label }));
-    this.element.innerHTML = `<div class="pane-header"><strong>${label}</strong><span class="independent" hidden>${t('independent')}</span><span class="orientation" hidden></span><span class="pane-actions"><button class="duplicate" type="button" aria-label="${t('duplicateAria', { label })}" title="${t('duplicate')}" hidden>${t('duplicate')}</button><button class="close" type="button" aria-label="${t('closeAria', { label })}" title="${t('close')}" hidden>${t('close')}</button></span></div><div class="stage"><img draggable="false" alt="" /><div class="message">${t('emptyMessage')}</div><div class="pages" hidden></div></div><div class="pane-meta"><button class="file-name" type="button" title="${t('fileChangeTitle')}" hidden></button><span class="meta-details"></span></div><input class="file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml,image/tiff,.tif,.tiff,application/pdf,.pdf" aria-label="${t('fileInputAria', { label })}" />`;
+    this.element.innerHTML = `<div class="pane-header"><strong>${label}</strong><span class="independent" hidden>${t('independent')}</span><span class="orientation" hidden></span><span class="pane-actions"><button class="duplicate" type="button" aria-label="${t('duplicateAria', { label })}" title="${t('duplicate')}" hidden>${t('duplicate')}</button><button class="close" type="button" aria-label="${t('closeAria', { label })}" title="${t('close')}" hidden>${t('close')}</button></span></div><div class="stage"><img draggable="false" alt="" /><svg class="marks" aria-hidden="true"></svg><div class="message">${t('emptyMessage')}</div><div class="pages" hidden></div></div><div class="pane-meta"><button class="file-name" type="button" title="${t('fileChangeTitle')}" hidden></button><span class="meta-details"></span></div><input class="file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml,image/tiff,.tif,.tiff,application/pdf,.pdf" aria-label="${t('fileInputAria', { label })}" />`;
     this.header = this.element.querySelector('.pane-header')!;
     this.stage = this.element.querySelector('.stage')!;
     this.imageEl = this.element.querySelector('img')!;
@@ -53,6 +65,7 @@ export class Pane {
     this.message = this.element.querySelector('.message')!;
     this.pages = this.element.querySelector('.pages')!;
     this.fileInput = this.element.querySelector<HTMLInputElement>('.file-input')!;
+    this.marksEl = this.element.querySelector<SVGSVGElement>('.marks')!;
     const input = this.fileInput;
     const duplicate = this.element.querySelector<HTMLButtonElement>('.duplicate')!;
     const close = this.element.querySelector<HTMLButtonElement>('.close')!;
@@ -95,7 +108,8 @@ export class Pane {
     this.pages.addEventListener('click', (event) => event.stopPropagation());
     this.stage.addEventListener('wheel', (event) => this.onWheel(event), { passive: false });
     // 拡大縮小のクリックを素早く続けてもダブルクリック扱いで Fit に戻さない。
-    this.stage.addEventListener('dblclick', (event) => { if (!this.callbacks.getClickZoom(event)) this.callbacks.onFit(this.id); });
+    // チェック中は続けて押すとレ点の付け外しになるので、Fit には戻さない。
+    this.stage.addEventListener('dblclick', (event) => { if (!this.callbacks.getClickZoom(event) && !this.callbacks.getCheckMode()) this.callbacks.onFit(this.id); });
     this.stage.addEventListener('pointerdown', (event) => this.pointerDown(event));
     this.stage.addEventListener('pointermove', (event) => this.pointerMove(event));
     this.stage.addEventListener('pointerup', (event) => this.pointerEnd(event));
@@ -103,6 +117,59 @@ export class Pane {
     this.stage.addEventListener('pointerleave', () => this.callbacks.onCursor(this.id, { x: 0, y: 0, inside: false }));
   }
   get rect() { return this.stage.getBoundingClientRect(); }
+  get page() { return this.asset?.tiff ? this.asset.tiff.page + 1 : this.asset?.pdf?.page ?? 1; }
+  get marks(): readonly CheckMark[] { return this.marksByPage.get(this.page) ?? []; }
+  get canUndoMark() { return this.undoStack.length > 0; }
+  // 付ける・消す・全消しのどれも1手として取り消せるよう、変更前の一覧を積んでおく。
+  private setMarks(next: CheckMark[]) {
+    const page = this.page;
+    this.undoStack.push({ page, marks: [...this.marks] });
+    if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+    this.marksByPage.set(page, next);
+    this.callbacks.onChange();
+  }
+  private resetMarks() { this.marksByPage = new Map(); this.undoStack = []; this.tap = undefined; }
+  // 取り消した操作が別のページのものでも、そのページのレ点を戻す。表示中でなければ見た目は変わらない。
+  undoMark() {
+    const entry = this.undoStack.pop();
+    if (!entry) return false;
+    this.marksByPage.set(entry.page, entry.marks);
+    this.callbacks.onChange();
+    return true;
+  }
+  clearMarks() {
+    if (!this.marks.length) return false;
+    this.setMarks([]);
+    return true;
+  }
+  // 表示中の座標で、レ点の上なら消し、画像の上なら付ける。
+  private toggleMarkAt(x: number, y: number) {
+    const asset = this.asset;
+    if (!asset) return;
+    const view = this.callbacks.getView(this.id);
+    const marks = this.marks;
+    const onScreen = marks.map((mark) => {
+      const p = originalToOriented(mark.x, mark.y, asset.width, asset.height, this.orientation);
+      return { x: view.x + p.x * view.scale, y: view.y + p.y * view.scale, radius: Math.max(mark.size * view.scale / 2, 8) };
+    });
+    const hit = findMarkAt(onScreen, x, y);
+    if (hit >= 0) { this.setMarks(marks.filter((_, index) => index !== hit)); return; }
+    const original = orientedToOriginal((x - view.x) / view.scale, (y - view.y) / view.scale, asset.width, asset.height, this.orientation);
+    if (original.x < 0 || original.y < 0 || original.x >= asset.width || original.y >= asset.height) return;
+    // 大きさは付けた瞬間の見た目に合わせ、以後は画像と一緒に拡大縮小する。
+    const style = this.callbacks.getCheckStyle();
+    this.setMarks([...marks, { x: original.x, y: original.y, size: style.size / view.scale, color: style.color }]);
+  }
+  // レ点は画像と同じ変換に載せると回転・反転で形が崩れるので、画面座標へ直して正立で描く。
+  private renderMarks(view: ViewState) {
+    const asset = this.asset;
+    if (!asset || !this.marks.length) { this.marksEl.replaceChildren(); return; }
+    this.marksEl.innerHTML = this.marks.map((mark) => {
+      const p = originalToOriented(mark.x, mark.y, asset.width, asset.height, this.orientation);
+      const size = mark.size * view.scale;
+      return `<path d="${checkSvgPath(view.x + p.x * view.scale, view.y + p.y * view.scale, size)}" stroke="${mark.color}" stroke-width="${Math.round(size * CHECK_STROKE_RATIO * 100) / 100}" />`;
+    }).join('');
+  }
   get oriented() { return this.asset ? orientedSize(this.asset.width, this.asset.height, this.orientation) : { width: 0, height: 0 }; }
   setLanguage(label: string) {
     this.label = label;
@@ -127,6 +194,7 @@ export class Pane {
     this.fileName.hidden = !this.asset;
     const marker = this.element.querySelector<HTMLElement>('.orientation')!;
     if (!this.asset) {
+      this.marksEl.replaceChildren();
       marker.hidden = true;
       marker.textContent = '';
       this.fileName.textContent = '';
@@ -135,6 +203,7 @@ export class Pane {
     }
     this.imageEl.style.transform = transformCss(view, this.asset.width, this.asset.height, this.orientation);
     this.imageEl.style.imageRendering = view.scale >= 2 ? 'pixelated' : 'auto';
+    this.renderMarks(view);
     const text = `${this.orientation.rotation ? `${this.orientation.rotation}°` : ''}${this.orientation.flipH ? ' ⇆' : ''}${this.orientation.flipV ? ' ⇅' : ''}`;
     marker.hidden = !text; marker.textContent = text;
     this.fileName.textContent = this.asset.name;
@@ -150,12 +219,12 @@ export class Pane {
       const asset = await loadImage(file, pageNumber, this.callbacks.getPdfResolution());
       if (token !== this.loadToken) { this.disposeAsset(asset); return; }
       this.disposeAsset();
-      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION };
+      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION }; this.resetMarks();
       this.renderPages(); this.callbacks.onActive(this.id); this.callbacks.onFit(this.id); this.callbacks.onChange();
     } catch (error) {
       if (token !== this.loadToken) return;
       this.disposeAsset();
-      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error');
+      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error'); this.resetMarks();
       this.message.textContent = t('loadingError', { message: error instanceof Error ? error.message : t('noImage') }); this.message.hidden = false; this.callbacks.onChange();
     }
   }
@@ -180,6 +249,7 @@ export class Pane {
     this.message.hidden = false;
     this.element.classList.remove('error');
     this.orientation = { ...DEFAULT_ORIENTATION };
+    this.resetMarks();
     this.callbacks.onChange();
   }
   swapContent(other: Pane) {
@@ -187,6 +257,8 @@ export class Pane {
     ++this.loadToken; ++other.loadToken;
     [this.asset, other.asset] = [other.asset, this.asset];
     [this.orientation, other.orientation] = [other.orientation, this.orientation];
+    [this.marksByPage, other.marksByPage] = [other.marksByPage, this.marksByPage];
+    [this.undoStack, other.undoStack] = [other.undoStack, this.undoStack];
     this.refreshContentUi();
     other.refreshContentUi();
   }
@@ -220,12 +292,12 @@ export class Pane {
       const asset = await createPdfPageAsset(source, page);
       if (token !== this.loadToken) { this.disposeAsset(asset); return; }
       this.disposeAsset();
-      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION };
+      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION }; this.resetMarks();
       this.renderPages(); this.callbacks.onActive(this.id); this.callbacks.onFit(this.id); this.callbacks.onChange();
     } catch (error) {
       if (token !== this.loadToken) return;
       this.disposeAsset();
-      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error');
+      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error'); this.resetMarks();
       this.message.textContent = t('pdfPageError', { message: error instanceof Error ? error.message : t('noImage') }); this.message.hidden = false; this.callbacks.onChange();
     }
   }
@@ -238,6 +310,12 @@ export class Pane {
     try {
       const next = await selectPdfPage(asset, asset.pdf.page, resolution);
       if (token !== this.loadToken || this.asset !== asset) { URL.revokeObjectURL(next.objectUrl); return; }
+      // 解像度を変えると画素数が変わる。レ点が同じ場所に残るよう、全ページ分を同じ比率で掛け直す。
+      const ratio = asset.width ? next.width / asset.width : 1;
+      if (ratio !== 1) {
+        for (const [page, marks] of this.marksByPage) this.marksByPage.set(page, scaleMarks(marks, ratio));
+        this.undoStack = this.undoStack.map((entry) => ({ page: entry.page, marks: scaleMarks(entry.marks, ratio) }));
+      }
       URL.revokeObjectURL(asset.objectUrl); Object.assign(asset, next);
       asset.pdf.resolution = resolution;
       this.imageEl.src = next.objectUrl;
@@ -259,12 +337,12 @@ export class Pane {
       const asset = await cloneImageAsset(source);
       if (token !== this.loadToken) { this.disposeAsset(asset); return; }
       this.disposeAsset();
-      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION };
+      this.asset = asset; this.imageEl.src = asset.objectUrl; this.message.hidden = true; this.orientation = { ...DEFAULT_ORIENTATION }; this.resetMarks();
       this.renderPages(); this.callbacks.onActive(this.id); this.callbacks.onFit(this.id); this.callbacks.onChange();
     } catch (error) {
       if (token !== this.loadToken) return;
       this.disposeAsset();
-      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error');
+      this.asset = undefined; this.imageEl.removeAttribute('src'); this.pages.hidden = true; this.element.classList.add('error'); this.resetMarks();
       this.message.textContent = t('duplicateError', { message: error instanceof Error ? error.message : t('noImage') }); this.message.hidden = false; this.callbacks.onChange();
     }
   }
@@ -310,11 +388,14 @@ export class Pane {
     const zoom = event.button === 0 ? this.callbacks.getClickZoom(event) : undefined;
     if (zoom) { const p = this.point(event); this.zoomAt(p.x, p.y, zoom); this.callbacks.onActive(this.id); return; }
     this.stage.setPointerCapture(event.pointerId); this.pointers.set(event.pointerId, this.point(event)); this.callbacks.onActive(this.id);
+    if (this.pointers.size === 1 && event.button === 0 && this.asset && this.callbacks.getCheckMode()) { const p = this.point(event); this.tap = { pointerId: event.pointerId, x: p.x, y: p.y }; }
+    else this.tap = undefined;
     if (this.pointers.size === 1) { const p = this.point(event); const v = this.callbacks.getView(this.id); this.drag = { x: p.x, y: p.y, viewX: v.x, viewY: v.y }; }
     if (this.pointers.size === 2) this.startPinch();
   }
   private pointerMove(event: PointerEvent) {
     const p = this.point(event); this.pointers.set(event.pointerId, p); this.updateCursor(p.x, p.y);
+    if (this.tap && Math.hypot(p.x - this.tap.x, p.y - this.tap.y) > TAP_SLOP) this.tap = undefined;
     if (!this.asset) return;
     if (this.pointers.size === 2 && this.pinch) {
       const points = [...this.pointers.values()]; const dx = points[1].x - points[0].x; const dy = points[1].y - points[0].y;
@@ -324,7 +405,10 @@ export class Pane {
       this.callbacks.updateView(this.id, (view) => { view.x = this.drag!.viewX + dx; view.y = this.drag!.viewY + dy; });
     }
   }
-  private pointerEnd(event: PointerEvent) { this.pointers.delete(event.pointerId); this.drag = undefined; this.pinch = undefined; if (this.pointers.size === 1) { const p = [...this.pointers.values()][0]; const v = this.callbacks.getView(this.id); this.drag = { x: p.x, y: p.y, viewX: v.x, viewY: v.y }; } }
+  private pointerEnd(event: PointerEvent) {
+    const tap = this.tap; this.tap = undefined;
+    if (tap && tap.pointerId === event.pointerId && event.type === 'pointerup' && this.callbacks.getCheckMode()) this.toggleMarkAt(tap.x, tap.y);
+    this.pointers.delete(event.pointerId); this.drag = undefined; this.pinch = undefined; if (this.pointers.size === 1) { const p = [...this.pointers.values()][0]; const v = this.callbacks.getView(this.id); this.drag = { x: p.x, y: p.y, viewX: v.x, viewY: v.y }; } }
   private startPinch() { const points = [...this.pointers.values()]; const dx = points[1].x - points[0].x; const dy = points[1].y - points[0].y; this.pinch = { distance: Math.hypot(dx, dy), scale: this.callbacks.getView(this.id).scale, centerX: (points[0].x + points[1].x) / 2, centerY: (points[0].y + points[1].y) / 2 }; }
   private updateCursor(x: number, y: number) {
     if (!this.asset) return;
