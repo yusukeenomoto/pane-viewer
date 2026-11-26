@@ -1,5 +1,5 @@
-import { orientedSize } from '../utils/orientation';
-import { transformCss } from '../utils/orientation';
+import { orientedSize, originalToOriented } from '../utils/orientation';
+import { drawCheck } from '../utils/marks';
 import type { ExportOptions, GridSettings, PaneId, ViewState } from '../types';
 import type { Pane } from '../pane';
 import { t } from '../i18n';
@@ -15,7 +15,14 @@ function drawPane(ctx: CanvasRenderingContext2D, pane: Pane, view: ViewState, x:
   ctx.beginPath(); ctx.rect(0, 0, width / scale, height / scale); ctx.clip();
   if (pane.asset) {
     const asset = pane.asset; const o = pane.orientation; const output = orientedSize(asset.width, asset.height, o);
+    ctx.save();
     ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale); ctx.translate(output.width / 2, output.height / 2); ctx.rotate(o.rotation * Math.PI / 180); ctx.scale(o.flipH ? -1 : 1, o.flipV ? -1 : 1); ctx.translate(-asset.width / 2, -asset.height / 2); ctx.drawImage(asset.image, 0, 0);
+    ctx.restore();
+    // 画面と同じく、レ点は向きの変換に載せず正立で描く。
+    for (const mark of pane.marks) {
+      const p = originalToOriented(mark.x, mark.y, asset.width, asset.height, o);
+      drawCheck(ctx, view.x + p.x * view.scale, view.y + p.y * view.scale, mark.size * view.scale, mark.color);
+    }
   }
   ctx.restore();
   if (options.labels) {
@@ -67,13 +74,32 @@ export async function makeScreenshot(panes: Pane[], getView: (id: PaneId) => Vie
   return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(t('screenshotError'))), 'image/png'));
 }
 
+// アクティブなペインの画像を、表示中の向きのまま元の解像度で書き出し、レ点を焼き込む。
+export async function makeCheckedImage(pane: Pane) {
+  const asset = pane.asset;
+  if (!asset) throw new Error(t('noImage'));
+  const o = pane.orientation;
+  const output = orientedSize(asset.width, asset.height, o);
+  const canvas = document.createElement('canvas'); canvas.width = output.width; canvas.height = output.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error(t('canvasInit'));
+  ctx.save();
+  ctx.translate(output.width / 2, output.height / 2); ctx.rotate(o.rotation * Math.PI / 180); ctx.scale(o.flipH ? -1 : 1, o.flipV ? -1 : 1); ctx.translate(-asset.width / 2, -asset.height / 2); ctx.drawImage(asset.image, 0, 0);
+  ctx.restore();
+  for (const mark of pane.marks) {
+    const p = originalToOriented(mark.x, mark.y, asset.width, asset.height, o);
+    drawCheck(ctx, p.x, p.y, mark.size, mark.color);
+  }
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(t('screenshotError'))), 'image/png'));
+}
+
 export function timestamp(date = new Date()) {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
 }
 
 // 動画と操作ログを同じ名前で並べるため、呼び出し側が時刻を渡せるようにしている。
-export function download(blob: Blob, extension: 'png' | 'mp4' | 'webm' | 'json', stamp = timestamp()) {
-  const name = `compare_${stamp}.${extension}`;
+export function download(blob: Blob, extension: 'png' | 'mp4' | 'webm' | 'json', stamp = timestamp(), fileName?: string) {
+  const name = fileName ?? `compare_${stamp}.${extension}`;
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

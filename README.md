@@ -19,11 +19,12 @@ A browser-based viewer for arranging images, PDFs, and TIFFs in multiple panes. 
 - Synchronize zooming and panning while keeping each pane's own offset and scale, or inspect panes independently. "Align" copies the active pane's view to every pane.
 - Rotate and flip panes, together or one at a time.
 - Export the pane layout as PNG, or copy it to the clipboard.
+- Put check marks (✓) on an image by eye, with a color and size of your choice. Marks stay on the spot through zooming, panning, rotation and flipping, are kept per page, and appear in screenshots and recordings. "Save with ✓" writes the active pane's image at its original resolution with the marks merged in.
 - Record a comparison as a video, saved alongside a JSON log of what you did.
 - Drop that JSON back onto the window to restore the grid, zoom, position, orientation and page of a past session.
 - Switch between Japanese and English.
 - Files are processed in the browser and are not uploaded by the application. There is no backend, no account, and no telemetry.
-- Display settings are kept in `localStorage` (three keys, prefixed `image-viewer.`). The contents and names of the files you open are never stored.
+- Display settings are kept in `localStorage` (four keys, prefixed `image-viewer.`). The contents and names of the files you open, and the check marks you add, are never stored.
 
 ## Usage
 
@@ -52,12 +53,27 @@ Click a loaded pane's file name to choose replacement files.
 | `R` / `Shift+R` | Rotate right / left |
 | `H` / `V` | Flip horizontally / vertically |
 | `S` / `Shift+S` | Toggle sync / align panes |
+| `C` / `Esc` | Start / finish check mode |
+| Click (check mode) | Add a check mark, or remove the one under the pointer |
+| `Ctrl`(`⌘`)`+Z` (check mode) | Undo the last check mark change in the active pane |
 | `Ctrl`(`⌘`)`+S` | Save a PNG |
 | `Ctrl`(`⌘`)`+Shift+C` | Copy a PNG to the clipboard |
 
 Single-key shortcuts fire only without a modifier, so `⌘R`, `⌘H` and the rest
 stay with the browser. The combinations with `Ctrl`(`⌘`) above are the only
-exceptions.
+exceptions, and `Ctrl`(`⌘`)`+Z` is taken only while check mode is on.
+
+### Check marks
+
+Turn on "✓ Check" (or press `C`) and click where a mark should go. Dragging
+still pans, and clicking an existing mark removes it. The color and size
+controls apply to marks added afterwards; a mark keeps the size it had on
+screen when it was placed and then scales with the image. "Clear" removes the
+marks on the visible page of the active pane. Marks live only in memory: they
+are dropped when the pane loads another file or the page is reloaded.
+
+"Save with ✓" writes `<file>_checked_<timestamp>.png` (with `_p<page>` for
+multi-page PDFs and TIFFs) in the orientation shown on screen.
 
 The recording button writes `compare_<timestamp>.mp4` (or `.webm`) plus
 `compare_<timestamp>.json`. Browsers allow only one automatic download at a
@@ -91,8 +107,8 @@ npm run build      # production build into dist/
 text, so do not remove that step. Generated PDF.js files are not tracked; `public/_headers` and `public/favicon.svg` are tracked.
 
 Tests cover the parts that can break silently: the relative-sync transform,
-orientation math, the operation-log format, trackpad detection, and settings
-migration. Rendering, recording and file loading are still verified by hand.
+orientation math, the operation-log format, trackpad detection, settings
+migration, and check mark geometry and settings. Rendering, recording and file loading are still verified by hand.
 
 ## Deployment
 
